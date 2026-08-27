@@ -1026,10 +1026,10 @@ class RuleBasedLayout:
         if isinstance(other, Rule):
             return self | [other]
         if isinstance(other, Iterable):
-            other_rules = set(other)
+            other_rules = list(other)
             assert all(isinstance(r, Rule) for r in other_rules), 'All rules must be of type Rule.'
             clone = self.clone()
-            clone.rules = list(set(self.rules) | other_rules)
+            clone.rules = list(dict.fromkeys(self.rules + other_rules))
             return clone
         return self.group(self, other)
 
