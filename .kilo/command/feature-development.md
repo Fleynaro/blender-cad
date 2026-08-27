@@ -1,3 +1,9 @@
+---
+description: "Follow the Blender-dependent feature development and verification workflow"
+agent: "code"
+subtask: false
+---
+
 # Feature Development Workflow
 
 Use this workflow for Blender-dependent feature work. [`testing.md`](../rules/testing.md) is the authority for execution commands, the diagnostic lifecycle, scope selection, acceptance criteria, and completion cleanup. [`environment.md`](../rules/environment.md) is the authority for Blender 5.0, `bpy`, and project-path constraints.
