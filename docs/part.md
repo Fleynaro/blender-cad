@@ -49,7 +49,7 @@ with result:
 
 ## Selecting And Editing Geometry
 
-`Part.faces()`, `wires()`, `edges()`, and `vertices()` return `ShapeList` collections backed by the current topology. The corresponding `BuildPart` helpers select from the active result. Selectors are intended for material assignment, locations, topology queries, and modifier operations.
+`Part.faces()`, `wires()`, `edges()`, and `vertices()` return `ShapeList` collections backed by the current topology. The corresponding `BuildPart` helpers select from the active result. Selectors are intended for material assignment, locations, topology queries, and modifier operations. See [`docs/selectors.md`](selectors.md) for logical versus physical mesh entities, topology grouping, filtering, UV placement, and wire behavior.
 
 ```python
 with BuildPart() as result:
