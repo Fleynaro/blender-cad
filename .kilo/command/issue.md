@@ -37,6 +37,8 @@ Risks and constraints
 Verification plan
 ```
 
+The entire issue draft must be written in English, including the title and every section and detail. Translate the user's request and any relevant evidence into English when the request is written in another language. This English-only requirement applies even when the displayed draft is not yet confirmed.
+
 Use concrete paths, symbols, and observed constraints where available. Do not invent implementation details or acceptance criteria.
 
 ## Confirmation and Publication
@@ -49,5 +51,7 @@ After explicit confirmation, create exactly one issue with `github_issue_write` 
 - Repository: `Fleynaro/blender-cad`
 - The confirmed title and body
 - Exactly one label: `bug` for a defect or `enhancement` for a new capability
+
+Before publishing, verify that both the title and body are entirely in English. Never publish an untranslated issue, even when the original request or confirmation is in another language.
 
 Do not create labels, pull requests, milestones, assignees, Project items, or perform any other GitHub write. Report the created issue URL and number, then stop without modifying code.
