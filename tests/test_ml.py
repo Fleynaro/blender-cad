@@ -2976,6 +2976,10 @@ class TestMLThreeDOperations(BaseCADTest):
             use_materials=True,
         )
 
+
+class TestRuleBasedLayout(BaseCADTest):
+    """Test suite verifying rule-based layout solving (RL rules), degree-of-freedom (DOF) parameters, and solver integration."""
+
     def test_evaluation_box_set_overlay_generation(self):
         """Verify that building a layout with evaluate=True correctly generates transparent evaluation bounding boxes over the geometry."""
         with BuildPart() as result:
@@ -3078,10 +3082,6 @@ class TestMLThreeDOperations(BaseCADTest):
             "test_evaluation_box_set_overlay_generation",
             use_materials=True,
         )
-
-
-class TestRuleBasedLayout(BaseCADTest):
-    """Test suite verifying rule-based layout solving (RL rules), degree-of-freedom (DOF) parameters, and solver integration."""
 
     def test_text_generation_and_evaluation_overlay(self):
         """Verify that multi-styled text blocks and strokes layout properly and accept transparent evaluation boxes."""
