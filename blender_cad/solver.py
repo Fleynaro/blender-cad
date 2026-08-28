@@ -15,7 +15,8 @@ from .build_part import Mode
 
 SolverLike = Union['OptimizationStrategy', 'Solver']
 
-# Context variable to track the active solver instance in the optimization thread
+# The optimizer runs outside the loop's thread; this context variable lets strategy
+# wrappers report their active stack back to the corresponding Solver instance.
 _current_running_solver: ContextVar[Optional['Solver']] = ContextVar('_current_running_solver', default=None)
 
 @dataclass
@@ -422,8 +423,8 @@ class Solver:
                     range_val = float(max) - float(min)
                     final_steps = int(builtins.max(1, math.ceil(abs(range_val / step))))
 
-                # Registration phase: build a definition for _parse_param
-                # We wrap it in the format _parse_param expects: (value, (min, max))
+                # Registration defines the positional layout of the optimizer vector.
+                # Candidate and final passes must call param() in this exact order.
                 param_def = (init_value, (min, max))
                 v, b, builder, length = _parse_param(param_def)
                 
@@ -441,7 +442,7 @@ class Solver:
                 
                 return init_value
             
-            # Execution phase: retrieve current values from flat array
+            # Candidate/final phases reconstruct this parameter from its registered slice.
             start, end = self._solver._offsets[self._param_counter]
             builder = self._solver._builders[self._param_counter]
             flat_slice = self._values[start:end]
@@ -539,7 +540,7 @@ class Solver:
                 self.aim(1e9)
 
         def mode(self, value=Mode.ADD):
-            """Returns the PRIVATE mode if this is not the final pass."""
+            """Keeps candidate geometry private and applies ``value`` only in the final pass."""
             if self.is_init:
                 self.add_cache_key_part(("mode", value.name))
             return value if self.is_final else Mode.PRIVATE
@@ -578,8 +579,10 @@ class Solver:
 
         self.methods_stack: List[OptimizationStrategy] = []
         
-        self._to_solver: Queue[float] = Queue()      # Carries error back to SciPy
-        # The queue accepts control messages: Tuple[str, Any]
+        # The worker's SciPy callback sends a candidate through _from_solver, then
+        # blocks until the main-thread loop supplies its accumulated error here.
+        self._to_solver: Queue[float] = Queue()
+        # _from_solver also carries strategy-stack and termination control messages.
         self._from_solver: Queue[Tuple[str, Any]] = Queue()
         
         self._best_x: Optional[np.ndarray] = None
@@ -587,8 +590,8 @@ class Solver:
 
     def __iter__(self):
         """ Handles registration pass, optimization thread, and yielding results. """
-        # 1. Registration Pass
-        # We yield a special session that just collects parameters
+        # Registration fixes parameter offsets and the cache-key structure before
+        # optimization. The loop body must preserve this param() call order later.
         self.init_values = []
         self.bounds = []
         self._builders = []
@@ -607,7 +610,8 @@ class Solver:
         self._best_x = None
         self.iterations = 0
 
-        # 2. Start optimizer in a background thread
+        # SciPy's callback blocks for each objective evaluation. Keeping it on a
+        # worker thread allows the main thread to expose those evaluations as a for-loop.
         thread = threading.Thread(target=self._run_minimize, daemon=True)
         thread.start()
 
@@ -643,7 +647,8 @@ class Solver:
                 print(f"[Solver Debug] {session.solver_name} | Iter: {self.iterations} | X: {', '.join(f'{v:.4f}' for v in x)} | Error: {self._current_error:.6f} | H: {session.homotopy_parameter:.1f}")
             self.iterations += 1
 
-        # 3. Final pass
+        # Persist the best vector before replaying the model one final time with
+        # normal geometry modes and final-only side effects enabled.
         if self._best_x is not None:
             Solver._CACHE[self.cache_key] = self._best_x
             final_session = self.Session(self, self._best_x, is_final=True)
@@ -663,7 +668,8 @@ class Solver:
             err_init = objective(x_start)
             self._cache_key_parts.append(("err_init", round(err_init, 6)))
             
-            # 1. Check cache for a better starting point
+            # Re-evaluate a cached vector before trusting it: the key describes the
+            # declared problem shape, while the current run supplies its objective.
             if self.cache_key in Solver._CACHE:
                 x_cache = Solver._CACHE[self.cache_key]
                 err_cache = objective(x_cache)
