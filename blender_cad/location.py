@@ -29,7 +29,11 @@ class SVector(Vector):
         return [(None, None)] * len(self)
     
 class TransformExpr(ABC):
-    """Lazy transform expression. Resolved only when applied to an Object."""
+    """Lazy transform expression that can resolve against an object's local bounds.
+
+    Keeping composition symbolic lets Origin and Size defer their object-dependent
+    calculations until the expression is assigned or applied to an Object.
+    """
 
     def __mul__(self, other):
         if isinstance(other, TransformExpr):
@@ -41,7 +45,11 @@ class TransformExpr(ABC):
         raise NotImplementedError
     
 class Origin(TransformExpr):
-    """A transformation representing the origin."""
+    """Select a fractional local-bounds pivot for later transforms in a chain.
+
+    The fraction is evaluated from the target object's local bounding box, so an
+    Origin is meaningful only inside a TransformChain and cannot resolve alone.
+    """
 
     @overload
     def __init__(self, factor: VectorLike = 0.5): ...
@@ -140,6 +148,7 @@ class Size(ScaleSetter):
         return self.to_scale(obj.orig_size)
     
 class TransformChain(TransformExpr):
+    """An ordered symbolic product of transforms and object-dependent operators."""
     def __init__(self, parts):
         self.parts = []
         for p in parts:
@@ -157,6 +166,8 @@ class TransformChain(TransformExpr):
 
         for part in self.parts:
             if isinstance(part, Origin):
+                # An Origin changes the pivot used by every following concrete
+                # transform until another Origin selects a new local-bounds point.
                 current_origin = part.fraction
                 pivot_mode = True
                 continue
@@ -397,6 +408,11 @@ class Scale(Transform):
         return super().bounds[6:9]
     
 def _along_axis_transform(axis: Union[Axis, Vector], value: float, transform_cls: Union[Type[Scale], Type[Size]], reset: bool = False):
+    """Build an anchored scale/size expression from ordinary lazy operators.
+
+    The selected signed axis chooses the stationary bounding-box face; the final
+    center Origin restores the default pivot for transforms appended afterward.
+    """
     axis, axis_neg = Axis.from_vector(axis)
     return (
         Origin(**{
