@@ -84,6 +84,8 @@ class BuildPart:
             # If there is a parent context, automatically add this part to it
             if BuildPart._context_stack:
                 from .modifiers import add
+                # Defer integration until the child is complete so its mode is
+                # applied once to the finished child mesh, not per primitive.
                 add(self, mode=self._mode, _make_copy=False)
 
         if self._loc_ctx_passthrough and parent_ctx:
@@ -308,7 +310,6 @@ def add_tags(tags: Iterable[str], domain: Optional[Literal["FACE", "EDGE", "POIN
     """Add tags for the current active BuildPart context."""
     build_part_context().add_tags(tags, domain)
 
-def remove_tags(tags: Iterable[str], domain: Optional[Literal["FACE", "EDGE", "POINT"]] = None): 
+def remove_tags(tags: Iterable[str], domain: Optional[Literal["FACE", "EDGE", "POINT"]] = None):
     """Remove tags for the current active BuildPart context."""
     build_part_context().remove_tags(tags, domain)
-    

@@ -92,7 +92,8 @@ class BaseCurve(Object):
         """Converts to mesh by temporarily linking deps to scene."""
         from .part import Part
         
-        # Collect self and all curve dependencies
+        # Curve and shrinkwrap modifiers only evaluate correctly when every
+        # referenced object is linked, even if the caller keeps them temporary.
         temp_obs = {self.obj} | {d.obj for d in self._dependencies}
         scene_objects = bpy.context.scene.collection.objects
         
