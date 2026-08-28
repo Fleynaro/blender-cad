@@ -276,6 +276,8 @@ class MaterialValue(ABC):
         if cached is not None:
             return cached
 
+        # Expressions describe a DAG. Cache resolved leaves and subgraphs so
+        # repeated descriptions share one Blender node tree within this build.
         result = self._build_impl(ctx)
         ctx._expr_cache[key] = result
         return result
@@ -869,6 +871,8 @@ class MaterialWeightedLayer(MaterialLayer):
 
     @override
     def build(self, ctx: "BuildMaterial") -> None:
+        # Keep the factor scoped to this layer so sibling terms cannot inherit
+        # a weight from an earlier term in a composite material.
         ctx.push_factor(self.factor)
         try:
             self.layer.build(ctx)
@@ -989,6 +993,8 @@ class BuildMaterial:
 
         self.nodes = self.node_tree.nodes
         self.links = self.node_tree.links
+        # A cached material can be rebuilt; clear its graph before producing
+        # the one BSDF/output pair that represents the new channel state.
         self.nodes.clear()
 
         self.channels = PBRChannels()
@@ -1511,6 +1517,8 @@ def build_material(layer: MaterialLayer, rebuild: bool = False) -> bpy.types.Mat
     mat_hash = _material_hash(layer)
     material = _find_existing_material(mat_hash)
 
+    # The persisted layer hash lets equivalent immutable descriptions share a
+    # compiled node tree until callers explicitly request a rebuild.
     if material is not None and not rebuild:
         return material
 
@@ -1556,6 +1564,8 @@ class PBRMaterial(MaterialLayer):
             incoming = getattr(self, attr)
             if incoming is None:
                 continue
+            # A plain PBR layer establishes a value. A blend mode instead
+            # treats the value as an overlay on the channel built so far.
             setattr(ctx.channels, attr, ctx.blend(current, incoming, mode=self.mode) if self.mode is not None else incoming)
 
 @dataclass(frozen=True, slots=True)
