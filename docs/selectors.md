@@ -119,6 +119,38 @@ z_levels = faces().group_by(Axis.Z)
 
 Directional shortcuts select the extreme coordinate group: `min_x()`, `max_x()`, `min_y()`, `max_y()`, `min_z()`, `max_z()`, `top()`, and `bottom()`. `side()` means every item except `top()` and `bottom()` in the same collection. Grouping and set combinations are covered by `test_grouping_and_filtering` and `test_complex_selection_logic` in [`tests/test_selectors.py`](../tests/test_selectors.py).
 
+### Geometry Checkpoints
+
+`GeometryCheckpoint` records the current spatial state of a part so selectors can distinguish geometry created after that state. Every modeling operation creates an operation checkpoint; therefore `entity.is_new()` compares the entity with the checkpoint from the most recent operation. Use it as a predicate with `filter_by(...)`:
+
+```python
+with BuildPart() as result:
+    Box(3, 3, 3)
+    with Locations(Pos(Z=3)):
+        Box(2, 2, 2)
+
+    # Select only faces introduced by the second operation.
+    faces().filter_by(lambda face: face.is_new()).mat = mat.red
+```
+
+The comparison is spatial rather than based only on mesh element identity. Existing exterior faces remain old when a boolean modifies them, while genuinely generated faces, such as cutout walls or bevel transitions, are new. If physical mesh faces must be inspected individually, call `split()` before `is_new()`.
+
+Create an explicit checkpoint with `make_checkpoint()` when several later operations should be treated as one interval. Pass that checkpoint to `is_new(checkpoint)` to select everything created since it:
+
+```python
+with BuildPart() as result:
+    Box(2, 2, 2)
+    checkpoint = make_checkpoint()
+    extrude(edges().top(), op=Pos(Z=1))
+    extrude(edges().top(), op=Pos(Z=1))
+
+    faces().split().filter_by(
+        lambda face: face.is_new(checkpoint)
+    ).mat = mat.red
+```
+
+`is_new()` is available on `Face`, `Edge`, and `Vertex` entities. Checkpoint behavior is covered by `TestGeometryCheckpoints` in [`tests/test_selectors.py`](../tests/test_selectors.py).
+
 ### Tags, Materials, And Conversion
 
 `tagged(*tags)` selects entities carrying requested tags; wildcard patterns are supported. `untagged(*tags)` removes matching tagged entities. `add_tags(...)`, `remove_tags(...)`, and the `tags` property update all selected entities. Tags are stored on mesh geometry, rather than on a temporary selector wrapper.
