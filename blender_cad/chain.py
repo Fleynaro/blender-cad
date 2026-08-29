@@ -170,7 +170,8 @@ class chain:
     def build(self, mode: Mode = Mode.ADD, min_vert_dist = 1e-4):
         def _build(ctx: ChainBuildContext):
             branch = ctx.branch
-            # Isolate this branch building into a private context so children don't pollute the parent immediately
+            # Build a branch privately. Nested branches need the completed parent mesh for
+            # clipping and dimension propagation, so they are merged only after this phase.
             with BuildPart(part=ctx.branch_part, mode=Mode.PRIVATE):
                 prev_rot_transform = ctx.rot_transform
 
@@ -205,6 +206,8 @@ class chain:
                     ctx.item_part = part
                     
                     if ctx.active_operations:
+                        # Operations are one-shot modifiers: they affect this next concrete part
+                        # rather than every remaining item in the branch.
                         for op in ctx.active_operations:
                             op._execute(ctx)
                         ctx.active_operations.clear()
@@ -245,6 +248,8 @@ class chain:
                         if prev_to_joint is None:
                             prev_to_joint = branch.resolve_item_joint(ctx.prev_item_part, ChainJoint.TO, ctx)
 
+                        # Resolve the previous joint in its unrotated local frame, then restore
+                        # its accumulated placement before aligning the current part to it.
                         ctx.prev_item_part.transform = current_prev_transform
                         from_joint.to(prev_to_joint, move_only=move_only, twist=twist, mode=Mode.JOIN)
                         if not move_only:
@@ -269,7 +274,8 @@ class chain:
                         clip_part.loc = Pos(-direction_size * 0.5)
                     add(clip_part, mode=branch.clip_by_parent if isinstance(branch.clip_by_parent, Mode) else Mode.INTERSECT)
 
-                # PHASE 3: Process deferred child branches sequentially
+                # Child branches attach at the point where they appeared in items, but run after
+                # this branch so parent clipping can use finalized geometry.
                 child_parts: list['Part'] = []
                 for child_chain, child_prev, child_rot in ctx.deferred_children:
                     child_ctx = ChainBuildContext(
@@ -338,12 +344,12 @@ class chain:
             total_parts_count += parts_in_segment
             all_segments_items.append(flat_items)
 
-        # Calculate the precise incremental bend angle per segment transition
+        # Rotations occur between concrete parts. ensure_angle includes the closing transition
+        # in the denominator, which makes a repeated pattern complete the requested total angle.
         step_angle = angle / (total_parts_count - (1 if ensure_angle else 0))
         
-        # We will rotate around the axis perpendicular to the chain progression axis
-        # Assuming standard bend behavior, we map this to the appropriate Rot object
-        # For this implementation, we use Rot(X=...) as seen in your example
+        # An explicit axis creates a full rotation; otherwise the scalar is interpreted by
+        # the surrounding chain using its configured rotation axis.
         rot_step = Rot(extract_vector(axis) * step_angle) if axis else step_angle
         
         result_items: list[chain.item_type] = []
