@@ -809,7 +809,7 @@ class Face(GeometryEntity):
         return verts_co, v_indices
     
     def _detect_geom_type(self) -> Tuple[GeomType, Vector]:
-        """Analyzes mesh normals and curvature to determine the primitive type."""
+        """Classifies a logical face with mesh-normal heuristics, not surface fitting."""
         default_axis = Vector((0, 0, 1))
         if not self.elements:
             return GeomType.UNKNOWN, default_axis
@@ -839,7 +839,8 @@ class Face(GeometryEntity):
         if len(diff_vectors) < 2:
             return GeomType.UNKNOWN, default_axis
 
-        # Axis is approximately the cross product of non-parallel chords
+        # Normal differences are chords on the Gaussian sphere. Their shared
+        # perpendicular direction approximates the axis of a revolved surface.
         axis = diff_vectors[0].cross(diff_vectors[len(diff_vectors)//2]).normalized()
         
         # Ensure axis aligns with the general outward normal direction
@@ -984,6 +985,8 @@ class Face(GeometryEntity):
     
     def _at_uv(self, u: float, v: float, u_offset_m: float = 0.0, v_offset_m: float = 0.0, projection: UVProjection | None = None) -> Location:
         """Finds the Location at surface coordinates (u, v) with metric offsets."""        
+        # Keep evaluation off exact UV boundaries: a boundary can belong to two
+        # triangle fans or to both sides of a periodic projection seam.
         u = max(1e-6, min(1.0 - 1e-6, u))
         v = max(1e-6, min(1.0 - 1e-6, v))
 
@@ -1085,8 +1088,9 @@ class Face(GeometryEntity):
             if self.DEBUG_MODE:
                 self._debug_visualize(curr_uv, move_dir_uv, v_tri, uv_tri, obj_scale)
             
-            # Apply scale to vertex coordinates
-            # This ensures tangents T_u/T_v account for the flattened/stretched geometry.
+            # Measure tangents in the part's scaled space. The final Location is
+            # also scaled by owner_loc(), so this only affects distance-to-UV
+            # conversion and prevents a non-uniform scale from distorting a walk.
             p = [v.co * obj_scale for v in v_tri]
             uv0, uv1, uv2 = uv_tri
             
@@ -1138,7 +1142,8 @@ class Face(GeometryEntity):
                 # Identify the vertices of the edge we are crossing
                 v1, v2 = v_tri[edge_idx], v_tri[(edge_idx+1)%3]
                 
-                # Find the adjacent triangle (could be in the same BMFace or neighbor BMFace)
+                # Continue through a fan triangle, a shared-edge neighbor, or finally
+                # a shared-vertex fallback when imperfect mesh connectivity requires it.
                 current_hit = self._find_next_triangle(v1, v2, bm_face, curr_uv, projection, uvs, v_indices)
                     
         return curr_uv.x % 1.0, curr_uv.y # Wrap X for cylindrical logic
@@ -1596,7 +1601,9 @@ def _estimate_geometry_center(local_verts: list[Vector], p_type: UVProjection) -
 def project_coords(verts_co: list[Vector], normal: Vector, p_type: UVProjection):
     """Projects 3D vertex coordinates into 2D UV space based on projection type."""
     uvs: list[Vector] = []
-    # Matrix that aligns 'normal' with Z, ensuring poles align with the face orientation
+    # Project in an axis-aligned local frame so the same formulas work for
+    # arbitrarily rotated faces; these UVs are temporary evaluation coordinates,
+    # not a Blender mesh UV layer.
     rot_quat = normal.to_track_quat('Z', 'Y')
     inv_rot = rot_quat.inverted()
     local_verts = [inv_rot @ co for co in verts_co]

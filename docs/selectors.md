@@ -107,7 +107,7 @@ cylindrical = faces().filter_by(GeomType.CYLINDER)
 new_faces = faces().split().filter_by(lambda face: face.is_new())
 ```
 
-Face classification is an analysis result. The supported types are `GeomType.PLANE`, `CYLINDER`, `CONE`, `SPHERE`, and `UNKNOWN`. Classification is based on the logical face's polygon normals and geometry, not on a native CAD surface. Cylinder, cone, sphere, and plane selection is exercised by `test_geometry_type_identification` in [`tests/test_selectors.py`](../tests/test_selectors.py).
+Face classification is an analysis result. The supported types are `GeomType.PLANE`, `CYLINDER`, `CONE`, `SPHERE`, and `UNKNOWN`. Classification is based on the logical face's polygon normals and geometry, not on a native CAD surface. `_detect_geom_type()` first recognizes co-directional normals as planes, then uses normal differences to estimate a revolve axis for cylinders and cones, and finally checks whether normals point outward from the face's average polygon center for spheres. It is a tessellation-dependent heuristic, not analytic surface fitting. Cylinder, cone, sphere, and plane selection is exercised by `test_geometry_type_identification` in [`tests/test_selectors.py`](../tests/test_selectors.py); see [`docs/geometry.md`](geometry.md#geometry-type-detection) for thresholds, formulas, and limits.
 
 `sort_by(...)` accepts an `Axis`, a vector direction, a `SortBy` value, or a key function. `group_by(...)` accepts the analogous `Axis`, vector, `GroupBy`, or key-function form and returns a list of `ShapeList` groups. Numeric group keys are compared using `tolerance`, which defaults to `1e-4`.
 
@@ -161,7 +161,7 @@ with BuildPart() as result:
 
 `set(u=..., v=...)` fixes normalized coordinates. `offset(u=..., v=...)` shifts normalized coordinates and wraps at the UV boundary. `set_m(...)` starts at UV origin and applies absolute metric offsets, while `offset_m(...)` walks a physical distance across the tessellated surface. `with_projection(...)` selects a specific `UVProjection`; `offset_final(...)` composes a final location offset after surface evaluation.
 
-Metric offsets account for the part's current scale while crossing polygon triangles. This behavior, UV wrapping, transformed surfaces, and scaled cylinders are covered by `test_uv_selector_offset_with_wrap_around`, `test_surface_at_mapping_with_complex_deformation`, and `test_uv_metric_offsets_on_scaled_cylinder` in [`tests/test_selectors.py`](../tests/test_selectors.py). See [`docs/location.md`](location.md) for `SurfaceLocation` composition and grid placement.
+Metric offsets account for the part's current scale while crossing polygon triangles. This behavior, UV wrapping, transformed surfaces, and scaled cylinders are covered by `test_uv_selector_offset_with_wrap_around`, `test_surface_at_mapping_with_complex_deformation`, and `test_uv_metric_offsets_on_scaled_cylinder` in [`tests/test_selectors.py`](../tests/test_selectors.py). See [`docs/geometry.md`](geometry.md) for projection, triangle interpolation, metric walking, and the full `UVSelector` ranking algorithm, and [`docs/location.md`](location.md) for `SurfaceLocation` composition and grid placement.
 
 ## Wires And Edges
 
