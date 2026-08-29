@@ -297,6 +297,8 @@ class Part(Object):
             x = (loc.col[0].to_3d().normalized() if loc.col[0].to_3d().length > 1e-9 else Vector((1, 0, 0))) * eps
             y = (loc.col[1].to_3d().normalized() if loc.col[1].to_3d().length > 1e-9 else Vector((0, 1, 0))) * eps
 
+            # Three points encode an origin plus two independent axes. Blender
+            # deforms them with the mesh, allowing sync to rebuild the frame.
             payload = [
                 (JointRole.ORIGIN, o),
                 (JointRole.X_AXIS, o + x),
@@ -345,6 +347,8 @@ class Part(Object):
                 JointRole.X_AXIS in data and
                 JointRole.Y_AXIS in data
             ):
+                # Joint frame reconstruction also rejects collapsed marker axes
+                # so a severe deformation cannot leave a silently invalid port.
                 joint.sync_from_frame(
                     data[JointRole.ORIGIN],
                     data[JointRole.X_AXIS],

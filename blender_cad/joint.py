@@ -17,6 +17,8 @@ class Joint:
     """Represents a joint for connecting two parts."""
     def __init__(self, loc: Location, object: Optional[Object] = None, deformable: bool = False):
         self.object = object or BuildPart._get_context().part
+        # Store the frame in owner-local space so object transforms keep the
+        # joint attached without rewriting its definition.
         self._rel_loc = self.object.loc.inverse * loc
         self.deformable = deformable
         self._joint_id = self.object._alloc_joint_id()
@@ -44,6 +46,8 @@ class Joint:
         from .modifiers import add
         from_port=self._rel_loc
         to_port=joint.loc if isinstance(joint, Joint) else joint
+        # move_only intentionally supplies the existing world rotation while
+        # still translating the source port onto the target port.
         rot=self.object.loc.quaternion if move_only else None
         self.object.loc = align(from_port, to_port, twist, rot)
         self.object.transform *= op

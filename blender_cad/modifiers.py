@@ -827,6 +827,9 @@ def simple_deform(
     part._make_op_checkpoint()
     part._inject_joint_markers(write=True)
 
+    # The baked Blender modifier transforms the marker vertices together with
+    # mesh geometry; sync below converts their final frame back into joints.
+
     # 1. Store original transformation and reset it to identity
     # This is crucial so the modifier applies in local space correctly
     old_transform = part.transform
