@@ -1,99 +1,136 @@
-# 🧊 blender_cad
+# blender_cad
 
-**The power of declarative CAD, the flexibility of polygons.**
+**Code-first polygonal modeling for Blender.**
 
-`blender_cad` is a Python framework for procedural polygonal modeling inside Blender. Inspired by the philosophy of `build123d`, it brings a code-first, non-destructive workflow to the world of meshes.
+`blender_cad` lets you describe structured 3D models with Python and build them directly as Blender meshes. It combines a build123d-inspired modeling workflow with Blender-native materials, modifiers, curves, and mesh data.
 
-Whether you are generating complex game levels, modular environment assets, or procedural hard-surface props, `blender_cad` allows you to describe your geometry with code while leveraging Blender's powerful rendering and material system.
+Use it for buildings, furniture, modular environments, hard-surface props, panels, facades, dashboards, and other assets that benefit from explicit dimensions, reusable components, and repeatable rules.
 
----
+## Why blender_cad?
 
-## 🚀 Why blender_cad?
+- **Keep models editable.** Change a dimension, a layout rule, or a reusable component, then rebuild the result.
+- **Work with Blender meshes.** Create render-ready polygonal geometry without an export/import loop.
+- **Express intent, not only coordinates.** Use contextual placement, semantic selection, declarative layout, and assembly relationships.
+- **Version and review models as code.** Model sources are compact, diffable, and easy to regenerate.
+- **Stay close to Blender.** Use Blender-native materials, curves, mesh operations, and scene objects.
 
-While traditional CAD (like `build123d` or `CadQuery`) excels at BREP geometry for engineering, it often struggles with the specific needs of game development: UV maps, vertex colors, and efficient mesh topologies.
+## Quick Start
 
-**blender_cad bridges this gap:**
+Run modeling scripts in Blender's Python environment. The recommended workflow is VS Code with the [Blender Development extension](https://github.com/JacquesLucke/blender_vscode): open this repository as a folder, start Blender with **Blender: Start**, then execute a script with **Blender: Run Script**.
 
-- **Context-Driven Modeling:** Use `with BuildPart():` blocks to manage state and geometry cleanly.
-- **Polygonal Logic:** Native support for meshes, meaning you get lightweight geometry ready for game engines.
-- **Advanced Selectors:** Filter and sort faces, edges, and vertices by geometry type (`GeomType.SPHERE`, `GeomType.CONE`, etc.), location, or custom logic.
-- **First-Class Materials:** Unlike standard CAD, materials are integrated into the core workflow. Assign textures and colors dynamically as you build.
-- **Blender Native:** It lives inside Blender. No export/import loops. Immediate visual feedback.
+Alternatively, use Blender's Text Editor after making the `blender_cad` package available to Blender's Python environment.
 
----
-
-## 🛠 Features
-
-- **Modular Locations:** Complex transformations using `Pos`, `Rot`, and distribution patterns like `GridLocations` or `PolarLocations`.
-- **Surface Attachment:** Attach objects directly to the surface of other objects using UV-coordinates or normals.
-- **Boolean & Modifiers:** Native `JOIN`, `CUT`, and `INTERSECT` modes, plus procedural `bevel` and other mesh-specific operations.
-- **Smart Selection:** Use the `~` operator for inverse selection or chain filters to find exactly the face you need.
-- **Hot Reload:** Built-in support for instant code updates without restarting Blender.
-
----
-
-## 📖 Quick Start
-
-Here is a glimpse of how you can build complex, material-aware geometry in just a few lines of code:
+Create a file such as `scratch.py` with:
 
 ```python
 from blender_cad import *
 
-# Create a part with a default material
-with BuildPart(mat=Material(color=(0.1, 0.1, 0.1))) as example:
-    # 1. Base Geometry
-    Box(10, 10, 1)
+with BuildPart(mat=mat.blue) as result:
+    Box(2, 2, 2)
+    faces().top().mat = mat.gold
 
-    # 2. Advanced Selection & Material Override
-    # Group faces by Z-axis: [Bottom, Sides, Top]
-    z_groups = faces().group_by(Axis.Z)
-    z_groups[2].mat = Material(color=(1, 0, 0)) # Set Top face to Red
-
-    # 3. Procedural Distribution
-    with Locations(Pos(Z=1)):
-        with GridLocations(x_spacing=3, y_spacing=3, x_count=3, y_count=3):
-            # Each instance can have its own local transform
-            with Locations(Rot(Y=45)):
-                Cylinder(radius=0.5, height=2)
-
-    # 4. Inverse Selection
-    # Find all faces that are NOT part of the cylinders (the base box)
-    base_faces = ~faces().filter_by(GeomType.CYLINDER)
+result.part.show(name="gift_box")
 ```
 
----
+Run it to add a blue box with a gold top to the current Blender scene. Dimensions are Blender units; use one consistent unit convention for a project.
 
-## 🕹 Game Level Generation Example
+## Build With Code
 
-`blender_cad` is particularly powerful for generating modular environments. You can define "Rules" for your rooms and let the script populate the scene:
+Model geometry in a `BuildPart` context, then show the resulting `Part` in Blender:
 
 ```python
-with BuildPart() as level:
-    # Generate a floor
-    Box(20, 20, 0.5)
+from blender_cad import *
 
-    # Attach a cone to a sphere's surface location
-    Sphere(radius=2)
-    surface_loc = faces().filter_by(GeomType.SPHERE)[0].at(0.3, 0.3)
+with BuildPart(mat=mat.iron) as result:
+    Box(4, 4, 1)
+    Cylinder(radius=0.75, height=2, mode=Mode.SUBTRACT)
 
-    with Locations(surface_loc):
-        Cone(radius_bottom=1, radius_top=0, height=3)
+result.part.show(name="plate_with_hole")
 ```
 
----
+Use `Mode.ADD`, `Mode.SUBTRACT`, `Mode.INTERSECT`, and `Mode.JOIN` to compose geometry. `SUBTRACT` creates real mesh cuts; `JOIN` combines mesh data without a boolean operation.
 
-## 🧪 Testing & Reliability
+Placement contexts make repeated geometry readable:
 
-The library is built with stability in mind. We use a comprehensive unit testing suite that verifies:
+```python
+from blender_cad import *
 
-- **Geometry Integrity:** Hashing mesh data to ensure consistent generation.
-- **Material Slots:** Verifying correct material indices and inheritance.
-- **Topology Graphs:** Ensuring the relationships between vertices, edges, and faces remain valid after complex operations.
+with BuildPart(mat=mat.green) as result:
+    with GridLocations(2, 2, 3, 2):
+        Cylinder(radius=0.4, height=1)
 
----
+result.part.show(name="cylinder_grid")
+```
 
-## 📝 License
+For finished geometry, select and edit the active mesh:
 
-`blender_cad` is available under the MIT License. Feel free to use it in your commercial or personal projects.
+```python
+from blender_cad import *
 
-_Built for artists who code and coders who create._
+with BuildPart(mat=mat.plastic_glossy_red) as result:
+    Box(2, 2, 1)
+    extrude(faces().top(), op=Pos(Z=1) * Scale(XY=0.6))
+    bevel(edges(), radius=0.1, segments=3)
+
+result.part.show(name="stepped_box")
+```
+
+Reacquire `faces()`, `edges()`, `wires()`, or `vertices()` after operations that change the mesh: earlier selections can refer to outdated mesh elements.
+
+## What You Can Build
+
+| Area | Capabilities |
+| --- | --- |
+| Core modeling | `BuildPart`, primitives, booleans, mesh joins, reusable parts, and scene display |
+| Placement | `Pos`, `Rot`, `Scale`, `Transform`, surface and curve locations, plus grid, polar, hexagonal, and curve distributions |
+| Selection | Logical faces, wires, edges, and vertices with filtering, sorting, grouping, checkpoints, tags, and face-level materials |
+| Mesh editing | Extrude, bevel, subdivision, proportional editing, solidify, deletion, mirror, bend, twist, wrap, and other Blender mesh operations |
+| Materials | Layered PBR materials, procedural surfaces, textures, shader variables, and per-face overrides |
+| Curves and text | Paths and splines, bevel/fill/extrude, curve placement, font geometry, styled text, and mesh conversion |
+| Declarative layout | HTML/CSS-inspired markup layout (`ml`) and rule-based layout (`rl`) backed by an optimizer |
+| Assembly | Named joints, ports, and ordered chain assemblies for modular components |
+
+## Choose A Workflow
+
+- Start with [Getting Started](docs/getting-started.md) for a guided first model.
+- Use [Part and BuildPart](docs/part.md) for primitives, modes, composition, and object lifecycle.
+- Use [Locations and Transforms](docs/location.md) for placement, orientation, repetition, and alignment.
+- Use [Selectors and Mesh Topology](docs/selectors.md) to target precise geometry after it is built.
+- Use [Modifiers and Mesh Operations](docs/modifiers.md) to edit an active mesh.
+- Use [Materials](docs/materials.md) for procedural and textured surfaces.
+- Use [Curve](docs/curve.md) and [Text](docs/text.md) for paths, typography, and curve-driven geometry.
+- Use [Markup Layout](docs/ml.md) for structured panels, facades, labels, and other mostly 2D arrangements.
+- Use [Rule-Based Layout](docs/rbl.md) and the [Solver](docs/solver.md) when relationships should determine positions and sizes instead of fixed coordinates. Direct solver use requires SciPy in Blender's embedded Python.
+- Use [Joints and Assembly](docs/joint.md) and [Chain Assembly](docs/chain.md) to connect reusable components.
+
+## Documentation
+
+| Guide | Description |
+| --- | --- |
+| [Overview](docs/overview.md) | Architecture, scope, and subsystem guide |
+| [Getting Started](docs/getting-started.md) | First parts, materials, placement, booleans, and edits |
+| [Part and BuildPart](docs/part.md) | Core part modeling and composition modes |
+| [Locations and Transforms](docs/location.md) | Transforms, placement contexts, and alignment |
+| [Selectors](docs/selectors.md) | Filtering and ordering logical mesh selections |
+| [Topology](docs/topology.md) | Logical topology reconstructed from Blender meshes |
+| [Geometry](docs/geometry.md) | Surface classification, UV mapping, and `Face.at(...)` |
+| [Modifiers](docs/modifiers.md) | Mesh editing and baked Blender modifiers |
+| [Materials](docs/materials.md) | PBR layers, textures, and shader customization |
+| [Curves](docs/curve.md) | Curve primitives, building, placement, and conversion |
+| [Text](docs/text.md) | Font geometry, styling, wrapping, and curve text |
+| [Tags](docs/tags.md) | Semantic labels and wildcard queries |
+| [Markup Layout](docs/ml.md) | CSS-like layout and generated geometry |
+| [Rule-Based Layout](docs/rbl.md) | Relationship-driven object layout and constraints |
+| [Solver](docs/solver.md) | Parameter optimization and solver strategies |
+| [Joints](docs/joint.md) | Named attachment points and component alignment |
+| [Chain Assembly](docs/chain.md) | Sequential, branched, and modular assemblies |
+
+## Mesh-First By Design
+
+`blender_cad` works with Blender polygon meshes, not analytic BREP or NURBS solids. Its topology layer groups compatible physical polygons into logical faces, wires, edges, and vertices so you can write surface-level modeling code without losing Blender's native workflow.
+
+Logical topology and `GeomType` classification are tessellation-dependent approximations, not analytic CAD guarantees. The library is designed for structured hard-surface and modular assets rather than sculpting, highly irregular organic forms, or freeform art-directed detail.
+
+## Further Reading
+
+See the [project overview](docs/overview.md) for the full architecture and guidance on selecting the right modeling system for a task.
