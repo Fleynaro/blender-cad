@@ -1,6 +1,6 @@
 # Curve
 
-`Curve` is a Blender curve object and an `Object` subclass. It can contain several spline islands, evaluate positions and orientation along its total length, receive bevel or fill geometry, and convert to a mesh `Part` through `.part`.
+`Curve` is a Blender curve object and an `Object` subclass. It can contain several spline islands, evaluate positions and orientation along its total length, receive bevel or fill geometry, and convert to a mesh [`Part`](part.md) through `.part`.
 
 ## Building Curves
 
@@ -74,7 +74,7 @@ Use `at()` with `Locations` or directly with components to place geometry along 
 
 ## Tags And Sub-Curves
 
-Curves support object-level tags on `CURVE` splines and control-point tags on `POINT` elements. `curve.tagged(*tags)` copies matching splines or control points into a new `Curve`; `untagged(*tags)` is its inverse filter. The builder also exposes system point tags such as `Curve.TAG_POINT_FIRST`, `Curve.TAG_POINT_LAST`, `Curve.TAG_POINT_SMOOTH_FILLET_START`, and `Curve.TAG_POINT_SMOOTH_FILLET_END`.
+Curves support object-level [tags](tags.md) on `CURVE` splines and control-point tags on `POINT` elements. `curve.tagged(*tags)` copies matching splines or control points into a new `Curve`; `untagged(*tags)` is its inverse filter. The builder also exposes system point tags such as `Curve.TAG_POINT_FIRST`, `Curve.TAG_POINT_LAST`, `Curve.TAG_POINT_SMOOTH_FILLET_START`, and `Curve.TAG_POINT_SMOOTH_FILLET_END`.
 
 ## Declarative `curve` Builder
 

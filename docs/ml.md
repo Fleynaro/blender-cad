@@ -1,6 +1,6 @@
 # Markup Layout (ML)
 
-`blender_cad.ml` provides the public `ml` node and `style` alias (`MLStyle`). It is a declarative, HTML/CSS-inspired way to construct primarily 2D layouts and then turn them into Blender mesh geometry. A node is analogous to a markup element: it accepts child nodes, text, existing parts, layout rules, and one or more style objects.
+`blender_cad.ml` provides the public `ml` node and `style` alias (`MLStyle`). It is a declarative, HTML/CSS-inspired way to construct primarily 2D layouts and then turn them into Blender mesh geometry. A node is analogous to a markup element: it accepts child nodes, [text](text.md), existing parts, [layout rules](rbl.md), and one or more style objects.
 
 ML is most useful for structured panels, architectural facades, sci-fi walls, control consoles, labels, dashboards, and other designs whose main complexity is spatial arrangement. It is not a general scene graph or a replacement for arbitrary 3D modeling: layout happens in the local XY plane first, then styles such as `extrude`, `bevel`, `bend`, and transforms produce or modify the final mesh.
 
@@ -89,7 +89,7 @@ See `TestMLFlexFlow` in [`tests/test_ml.py`](../tests/test_ml.py) for row and co
 
 ## Text And Inline Content
 
-Strings are automatically laid out as text. Standard flow can mix text with atomic inline boxes. `ml.b(...)` and `ml.i(...)` create bold and italic inline wrappers. A wrapper with no box-affecting style is transparent to the surrounding text flow; a wrapper with a box style, such as a background or padding, is measured as one inline item.
+Strings are automatically laid out as [text](text.md). Standard flow can mix text with atomic inline boxes. `ml.b(...)` and `ml.i(...)` create bold and italic inline wrappers. A wrapper with no box-affecting style is transparent to the surrounding text flow; a wrapper with a box style, such as a background or padding, is measured as one inline item.
 
 Text styles include `font_size`, `font_weight`, `font_style`, `line_height`, `letter_spacing`, `word_spacing`, `text_align`, `white_space`, and `wrap_mode`. Supported wrapping modes are `word`, `character`, `anywhere`, and `none`; `white_space="nowrap"` and `white_space="pre"` disable width-based wrapping. Explicit newline characters remain line breaks. Text measurement uses Blender text geometry, so wrapping adapts to the available layout width without manually placing glyphs.
 
@@ -182,7 +182,7 @@ Use `ml.dof(...)` for a solver-controlled numeric style value, `ml.dof_p(...)` f
 
 `show_eval_box=True` or a material layer displays the evaluation boxes and boundary curves for inspection. `build(evaluate=True)` emits only the lightweight evaluation representation.
 
-`tag` is inherited by descendants. `root_tag` applies only to the current node. After emission, use the selector API to find tagged mesh geometry; see [`Selectors`](selectors.md). RBL tags and ML tags cooperate when rules are compiled from the ML tree.
+`tag` is inherited by descendants. `root_tag` applies only to the current node. After emission, use the [selector API](selectors.md) to find tagged mesh geometry; see the [tags guide](tags.md). RBL tags and ML tags cooperate when rules are compiled from the ML tree.
 
 The RBL integration is covered by `TestRuleBasedLayout` in [`tests/test_ml.py`](../tests/test_ml.py), especially `test_inside_rule_with_curve_boundary_and_evaluation`, `test_tag_propagation_and_chained_rule_selectors`, `test_size_rule_expansion_in_concave_geometry`, and `test_dof_in_transform_callback`. See [`Rule-Based Layout`](rbl.md) and [`Solver`](solver.md) for the standalone APIs.
 

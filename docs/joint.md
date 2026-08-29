@@ -1,6 +1,6 @@
 # Joints And Assembly
 
-`Joint` is an oriented attachment point owned by a `Part`. It makes reusable assemblies explicit: define a port on each component, then place one component so its port meets another. A joint wraps a `Location` with ownership and optional deformation tracking; it is not geometry and does not appear in the finished mesh.
+`Joint` is an oriented attachment point owned by a [`Part`](part.md). It makes reusable assemblies explicit: define a port on each component, then place one component so its port meets another. A joint wraps a [`Location`](location.md) with ownership and optional deformation tracking; it is not geometry and does not appear in the finished mesh.
 
 Import the public API from the package root:
 
@@ -96,7 +96,7 @@ The bounding box is represented as a 3D part even for flat geometry, so this als
 
 ## Deformable Joints
 
-Set `deformable=True` when a joint must follow mesh-edit operations such as `bend`, `twist`, `simple_deform`, or vertex transforms. A normal joint preserves its stored local frame; it does not infer where an arbitrary deformation moved that frame. A deformable joint is updated after a supported operation:
+Set `deformable=True` when a joint must follow mesh-edit operations such as [`bend`, `twist`, and `simple_deform`](modifiers.md), or vertex transforms. A normal joint preserves its stored local frame; it does not infer where an arbitrary deformation moved that frame. A deformable joint is updated after a supported operation:
 
 ```python
 with BuildPart() as result:

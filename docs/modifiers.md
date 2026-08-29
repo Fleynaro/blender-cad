@@ -1,6 +1,6 @@
 # Modifiers And Mesh Operations
 
-`blender_cad` exposes mesh-editing operations from `blender_cad.modifiers` at the package root. They operate on the active `BuildPart` and mutate its mesh immediately. Use selectors such as `faces()`, `wires()`, `edges()`, and `vertices()` to control the affected logical geometry. Reacquire selections after every topology-changing operation because previously held selection wrappers can no longer refer to the current mesh.
+`blender_cad` exposes mesh-editing operations from `blender_cad.modifiers` at the package root. They operate on the active `BuildPart` and mutate its mesh immediately. Use [selectors](selectors.md) such as `faces()`, `wires()`, `edges()`, and `vertices()` to control the affected logical geometry. Reacquire selections after every topology-changing operation because previously held selection wrappers can no longer refer to the current mesh.
 
 ```python
 from blender_cad import *
@@ -94,7 +94,7 @@ Subdivide before a deform or proportional edit when additional vertices are need
 
 ### `extrude`
 
-`extrude(entities=None, op=Transform(), prop_edit=None, delete_source=False, recalc_normals=False, tag=None)` duplicates and connects selected geometry, then transforms the new vertices.
+`extrude(entities=None, op=Transform(), prop_edit=None, delete_source=False, recalc_normals=False, tag=None)` duplicates and connects selected geometry, then transforms the new vertices. The optional `tag` uses the mesh tagging API described in [`tags.md`](tags.md).
 
 | Selected type | Result |
 | --- | --- |

@@ -6,7 +6,7 @@ The `location` API is the library's Blender `mathutils`-backed transform layer. 
 from blender_cad import *
 ```
 
-`Transform`, `Location`, and their subclasses are wrappers around a Blender world matrix. They use the same fundamental rule as matrix multiplication: the right-hand transform is applied first.
+`Transform`, `Location`, and their subclasses are wrappers around a Blender world matrix used by [`Part`](part.md), [`Joint`](joint.md), and placement contexts. They use the same fundamental rule as matrix multiplication: the right-hand transform is applied first.
 
 ```python
 transform = Pos(X=2) * Rot(Z=90)
@@ -149,7 +149,7 @@ The pattern subclasses generate the locations passed to `Locations`:
 
 ## Surface And Curve Locations
 
-`SurfaceLocation` and `CurveLocation` preserve a geometric coordinate system while locations are composed. This is different from an ordinary `Location`, which is only a fixed world matrix.
+`SurfaceLocation` and `CurveLocation` preserve a geometric coordinate system while locations are composed. This is different from an ordinary `Location`, which is only a fixed world matrix; their surface inputs come from [selectors](selectors.md), while curve inputs come from [curves](curve.md).
 
 ### SurfaceLocation
 
@@ -193,7 +193,7 @@ As with surface locations, multiplying by a location accumulates these local off
 | `twist=<degrees>` | Exact target-frame alignment, a 180-degree facing flip, then the given local-Z twist. |
 | `rot=<Quaternion>` | Uses the supplied world rotation. |
 
-This is used by `Joint` and can also be assigned directly to a child builder's `.loc`. The direct shortest-arc and twist cases are covered by `test_align_joints` and `test_align_joints_with_twist` in [`tests/test_locations.py`](../tests/test_locations.py); joint composition is exercised by `test_joint_connection` and `test_joint_registration_and_propagation`.
+This is used by [`Joint`](joint.md) and can also be assigned directly to a child builder's `.loc`. The direct shortest-arc and twist cases are covered by `test_align_joints` and `test_align_joints_with_twist` in [`tests/test_locations.py`](../tests/test_locations.py); joint composition is exercised by `test_joint_connection` and `test_joint_registration_and_propagation`.
 
 ## Tested References
 

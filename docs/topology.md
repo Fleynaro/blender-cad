@@ -2,7 +2,7 @@
 
 `blender_cad` stores geometry as a Blender mesh, not as a BREP model. Blender therefore exposes physical polygons, mesh edges, and mesh vertices. Those elements are useful for rendering, but they are too fine-grained for most CAD-like operations: for example, the curved side of a cylinder is normally tessellated into many polygons even though a user expects to select one surface.
 
-`Topology` in [`blender_cad/geometry.py`](../blender_cad/geometry.py) reconstructs a temporary, CAD-like view of the current BMesh. It is the foundation for `faces()`, `wires()`, `edges()`, and `vertices()`, and consequently for selector filtering, ordering, tagging, surface placement, and curve placement.
+`Topology` in [`blender_cad/geometry.py`](../blender_cad/geometry.py) reconstructs a temporary, CAD-like view of the current BMesh. It is the foundation for `faces()`, `wires()`, `edges()`, and `vertices()`, and consequently for [selector filtering and ordering](selectors.md), [tagging](tags.md), [surface placement](geometry.md), and [curve placement](curve.md).
 
 For public selector usage, see [`docs/selectors.md`](selectors.md). This page explains the current reconstruction algorithm and its implementation-level limitations; it is not a promise of a BREP kernel.
 

@@ -1,6 +1,6 @@
 # Geometry And Surface Mapping
 
-`blender_cad` models with Blender meshes, then exposes a CAD-like geometry layer over that mesh. This page explains the mathematical implementation behind logical faces, `Face.at(...)`, `UVSelector`, and `GeomType` classification. It describes the current implementation, not an analytic BREP or NURBS surface API.
+`blender_cad` models with Blender meshes, then exposes a CAD-like geometry layer over that mesh. This page explains the mathematical implementation behind logical faces, `Face.at(...)`, `UVSelector`, and `GeomType` classification used by [selectors](selectors.md). It describes the current implementation, not an analytic BREP or NURBS surface API.
 
 For how the `Topology` analyzer first groups physical polygons into logical entities, see [`docs/topology.md`](topology.md). For the public collection and selector API, see [`docs/selectors.md`](selectors.md).
 

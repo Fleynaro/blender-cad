@@ -1,6 +1,6 @@
 # Selectors And Mesh Topology
 
-`blender_cad` exposes a CAD-like selection API over Blender polygon meshes. Import it from the package root:
+`blender_cad` exposes a CAD-like selection API over Blender polygon meshes. It works with the logical entities reconstructed by [Topology](topology.md). Import it from the package root:
 
 ```python
 from blender_cad import *
@@ -153,7 +153,7 @@ with BuildPart() as result:
 
 ### Tags, Materials, And Conversion
 
-`tagged(*tags)` selects entities carrying requested tags; wildcard patterns are supported. `untagged(*tags)` removes matching tagged entities. `add_tags(...)`, `remove_tags(...)`, and the `tags` property update all selected entities. Tags are stored on mesh geometry, rather than on a temporary selector wrapper.
+[`tagged(*tags)` and `untagged(*tags)`](tags.md) select entities carrying or excluding requested tags; wildcard patterns are supported. `add_tags(...)`, `remove_tags(...)`, and the `tags` property update all selected entities. Tags are stored on mesh geometry, rather than on a temporary selector wrapper.
 
 Assigning `ShapeList.mat` assigns the material to every selected entity that supports materials, such as faces:
 

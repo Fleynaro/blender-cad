@@ -152,7 +152,7 @@ with BuildPart(mat=mat.blue) as result:
 result.part.default_mat = mat.green
 ```
 
-Assign `.mat` to a selected `Face` or `ShapeList` to override only those faces. Changing `part.default_mat` does not overwrite explicit face materials. `test_material_assignment_by_z_groups` and `test_nested_material_logic_and_overrides` in [`tests/test_materials.py`](../tests/test_materials.py) verify default slots, face overrides, nested `BuildPart` behavior, and `set_default_mat(...)`.
+Assign `.mat` to a selected [`Face` or `ShapeList`](selectors.md) to override only those faces. Changing `part.default_mat` does not overwrite explicit face materials. `test_material_assignment_by_z_groups` and `test_nested_material_logic_and_overrides` in [`tests/test_materials.py`](../tests/test_materials.py) verify default slots, face overrides, nested `BuildPart` behavior, and `set_default_mat(...)`.
 
 See [`docs/part.md`](part.md) for the surrounding `BuildPart` and face-selection APIs.
 

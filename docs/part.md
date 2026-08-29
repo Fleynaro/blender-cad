@@ -1,6 +1,6 @@
 # Part And BuildPart
 
-`Part` is the library's polygon-mesh object. It owns a Blender mesh object and inherits common scene-object behavior from `Object`, including transforms, bounds, joints, tagging, `show()`, and `remove()`. Primitives such as `Box`, `Sphere`, and `Cylinder` build `Part` geometry; they do not create CAD BREP solids.
+`Part` is the library's polygon-mesh object. It owns a Blender mesh object and inherits common scene-object behavior from `Object`, including [transforms](location.md), bounds, [joints](joint.md), [tagging](tags.md), `show()`, and `remove()`. Primitives such as `Box`, `Sphere`, and `Cylinder` build `Part` geometry; they do not create CAD BREP solids.
 
 Import the public API from the package root:
 
@@ -60,7 +60,7 @@ with BuildPart() as result:
 
 After an operation that changes topology, reacquire selectors instead of retaining old elements. The selected geometry wrappers map to the current BMesh and can become invalid after a mesh edit.
 
-`mat` assigns material to selected faces, or to all faces when no face selection is supplied. `default_mat` sets material slot zero and leaves explicit non-default face materials intact. `BuildPart(mat=...)` applies its material as the completed part's default material.
+`mat` assigns [material](materials.md) to selected faces, or to all faces when no face selection is supplied. `default_mat` sets material slot zero and leaves explicit non-default face materials intact. `BuildPart(mat=...)` applies its material as the completed part's default material.
 
 `get_tags()`, `set_tags()`, `add_tags()`, and `remove_tags()` work over face, edge, and point domains. Tags are stored on geometry, not merely on the Python wrapper.
 

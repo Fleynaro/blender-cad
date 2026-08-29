@@ -1,8 +1,8 @@
 # Tags
 
-Tags are lightweight string labels attached to geometry or layout nodes. They let a model mark meaningful regions while it is being built, then find those regions later with selectors instead of preserving temporary Python variables or reconstructing the selection from geometric predicates.
+Tags are lightweight string labels attached to geometry or layout nodes. They let a model mark meaningful regions while it is being built, then find those regions later with [selectors](selectors.md) instead of preserving temporary Python variables or reconstructing the selection from geometric predicates.
 
-Typical uses include assigning materials to selected faces, modifying geometry produced by an operation, isolating a branch of a curve, and targeting nodes in a rule-based layout (RBL) tree.
+Typical uses include assigning [materials](materials.md) to selected faces, modifying geometry produced by an operation, isolating a branch of a [curve](curve.md), and targeting nodes in a [rule-based layout](rbl.md) tree.
 
 ```python
 from blender_cad import *
@@ -33,7 +33,7 @@ paintable.mat = mat.red
 non_background = faces().untagged("ml:background")
 ```
 
-`tagged(...)` and `untagged(...)` return filtered results. They do not remove labels from the source object. To edit labels, use `add_tags(...)`, `remove_tags(...)`, or assign the `tags` property on individual geometry entities or a `ShapeList`.
+`tagged(...)` and `untagged(...)` return filtered results. They do not remove labels from the source object. To edit labels, use `add_tags(...)`, `remove_tags(...)`, or assign the `tags` property on individual geometry entities or a [`ShapeList`](selectors.md).
 
 ## Mesh Part Tags
 

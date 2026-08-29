@@ -1,6 +1,6 @@
 # Rule-Based Layout (RBL)
 
-`blender_cad.rbl` provides `rl`, a rule-based layout API for arranging parts and markup-layout (`ml`) nodes. Rather than encoding every final coordinate as an absolute value, build a hierarchy and declare the relationships that should hold: move toward a point, stay inside a boundary, remain outside another object, follow a curve, face a target, or use a requested size. Call `resolve()` to evaluate those relationships and add the positioned physical parts to the active build.
+`blender_cad.rbl` provides `rl`, a rule-based layout API for arranging [parts](part.md) and [markup-layout (`ml`) nodes](ml.md). Rather than encoding every final coordinate as an absolute value, build a hierarchy and declare the relationships that should hold: move toward a point, stay inside a boundary, remain outside another object, follow a [curve](curve.md), face a target, or use a requested size. Call `resolve()` to evaluate those relationships and add the positioned physical parts to the active build.
 
 Import the public alias from the package root:
 
@@ -137,7 +137,7 @@ Rule initialization is ordered by `init_priority`. `configure_dofs` has the high
 
 Groups make coordinate spaces and rule application explicit. They can be nested, and the same node can be present through multiple group paths. Global transforms accumulate through parent groups.
 
-Tags select nodes declaratively rather than retaining every Python variable. `rl.object` adds `rl.TAG_OBJECT`; `rl.group` adds `rl.TAG_GROUP`. The available query helpers are:
+[Tags](tags.md) select nodes declaratively rather than retaining every Python variable. `rl.object` adds `rl.TAG_OBJECT`; `rl.group` adds `rl.TAG_GROUP`. The available query helpers are:
 
 - `rl.tagged(*tags, root=None)` selects nodes matching the tags.
 - `rl.untagged(*tags, root=None)` selects nodes not matching the tags.

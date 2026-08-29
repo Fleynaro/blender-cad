@@ -1,6 +1,6 @@
 # Chain Assembly
 
-`blender_cad.chain` assembles `Part`-like components end to end by aligning joints. It is intended for turning reusable 2D or shallow 3D modules into connected 3D structures: walls into rooms or corridors, panels into a box, or repeated tiles into a circular shell. A chain is an assembly operation, not a general constraint solver. Each concrete item is positioned relative to the preceding concrete item, then the resulting parts are joined into the active `BuildPart`.
+`blender_cad.chain` assembles [`Part`](part.md)-like components end to end by aligning [`Joint`](joint.md) objects. It is intended for turning reusable 2D or shallow 3D modules into connected 3D structures: walls into rooms or corridors, panels into a box, or repeated tiles into a circular shell. A chain is an assembly operation, not a general constraint solver. Each concrete item is positioned relative to the preceding concrete item, then the resulting parts are joined into the active `BuildPart`.
 
 Import the public API from the package root:
 
@@ -105,7 +105,7 @@ with BuildPart() as result:
     ).build()
 ```
 
-Tags passed through `tag=` are applied to the completed branch faces. They can then be selected and transformed with the standard selector API. Connected chain geometry can share topology at joins, so later edits to tagged faces may deform adjacent connected sections as well.
+[Tags](tags.md) passed through `tag=` are applied to the completed branch faces. They can then be selected and transformed with the standard [selector API](selectors.md). Connected chain geometry can share topology at joins, so later edits to tagged faces may deform adjacent connected sections as well.
 
 ## Repeated Curves And Bends
 

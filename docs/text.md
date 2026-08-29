@@ -1,6 +1,6 @@
 # Text
 
-`Text` is a Blender FONT curve and an `Object` subclass. It supports text geometry, per-character material and typography through `t`, curve deformation, shrinkwrapping, and conversion to a mesh `Part` using `.part`.
+`Text` is a Blender FONT [curve](curve.md) and an `Object` subclass. It supports text geometry, per-character [material](materials.md) and typography through `t`, curve deformation, shrinkwrapping, and conversion to a mesh [`Part`](part.md) using `.part`.
 
 ## Basic Text
 
@@ -66,7 +66,7 @@ label.loc = Pos(X=path.length() / 2) * Rot(X=30)
 
 ## ML Integration
 
-The `ml` layout system creates `Text` objects internally for textual leaves. Its tested style fields include font size, bold and italic font styling, character and word spacing, text alignment, wrapping, line height, extrusion, and text stroke geometry. This is layout-level behavior rather than extra `Text` public methods.
+The [`ml`](ml.md) layout system creates `Text` objects internally for textual leaves. Its tested style fields include font size, bold and italic font styling, character and word spacing, text alignment, wrapping, line height, extrusion, and text stroke geometry. This is layout-level behavior rather than extra `Text` public methods.
 
 The implementation measures text using temporary `Text` objects and a cached differential measurement so normal font side bearings do not inflate content width. See [`blender_cad/ml.py`](../blender_cad/ml.py) and text-focused coverage in [`tests/test_ml.py`](../tests/test_ml.py).
 

@@ -1,6 +1,6 @@
 # Solver
 
-`blender_cad.solver` turns a declarative model into an optimization problem. Instead of calculating coordinates or dimensions procedurally, declare adjustable values with `s.param(...)` and declare the desired relationships with `s.aim_*()` calls. The solver searches for parameter values that minimize the accumulated error, then executes the block once more with the best values.
+`blender_cad.solver` turns a declarative model into an optimization problem. Instead of calculating coordinates or dimensions procedurally, declare adjustable values with `s.param(...)` and declare the desired relationships with `s.aim_*()` calls. The solver searches for parameter values that minimize the accumulated error, then executes the block once more with the best values. Its transform-compatible values come from the [`location`](location.md) API.
 
 The public exports are `Solver`, `sm`, and `solver`:
 
@@ -111,7 +111,7 @@ Keep all problem-defining inputs represented by the registered parameters or the
 
 ## Layout Integrations
 
-The solver is also the optimization backend for rule-based and markup layouts. These integrations retain the same positional parameter contract, so changing traversal order, enabled degrees of freedom, or style-resolution order between passes is unsafe.
+The solver is also the optimization backend for [rule-based](rbl.md) and [markup layouts](ml.md). These integrations retain the same positional parameter contract, so changing traversal order, enabled degrees of freedom, or style-resolution order between passes is unsafe.
 
 `rl.resolve(...)` accepts either a `Solver` or a strategy. It initializes and orders rule bindings, registers the enabled degrees of freedom for layout nodes, evaluates soft rules through the session objectives, and instantiates physical parts after the solve. Hard rules apply transforms directly; soft collision, gravity, look-at, and size rules contribute optimization error. See [`tests/test_rbl.py`](../tests/test_rbl.py) for scopes, priorities, degree-of-freedom locking, collisions, and solver interactions.
 
