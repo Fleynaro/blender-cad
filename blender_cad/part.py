@@ -1,33 +1,48 @@
-from dataclasses import dataclass
-import bpy
-import bmesh
-from typing import TYPE_CHECKING, Any, Generic, List, NamedTuple, Optional, TypeVar
-from typing_extensions import override
 import hashlib
 import struct
-from mathutils import Vector, Matrix
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar
 
+import bmesh
+import bpy
+from mathutils import Matrix, Vector
+from typing_extensions import override
+
+from .bmesh_wrapper import BMEdgeWrapper, BMeshWrapper, BMFaceWrapper, BMVertWrapper
 from .common import VectorLike, extract_vector
 from .location import Location, Pos, Scale, Transform, TransformExpr
-from .object import AttributeDomainItems, Object
 from .material import bpy_material_hash, mat
-from .bmesh_wrapper import BMFaceWrapper, BMEdgeWrapper, BMVertWrapper, BMeshWrapper
+from .object import AttributeDomainItems, Object
 from .shape_list import ShapeList
 
 if TYPE_CHECKING:
-    from .geometry import Edge, Face, Topology, Vertex, Wire, TopologyConfig, GeometryCheckpoint
+    from .geometry import (
+        Edge,
+        Face,
+        GeometryCheckpoint,
+        Topology,
+        TopologyConfig,
+        Vertex,
+        Wire,
+    )
+
 
 class Part(Object):
     """An object representing a part. Manages its own mesh and Blender object."""
 
-    def __init__(self, obj: Optional[bpy.types.Object] = None, topology: Optional['TopologyConfig'] = None):
+    def __init__(
+        self,
+        obj: Optional[bpy.types.Object] = None,
+        topology: Optional["TopologyConfig"] = None,
+    ):
         super().__init__(obj)
         from .geometry import TopologyConfig
-        self._bm_wrapper: Optional['BMeshWrapper'] = None
+
+        self._bm_wrapper: Optional["BMeshWrapper"] = None
         self.topology_config = topology or TopologyConfig()
-        self._topology: Optional['Topology'] = None
-        self._last_checkpoint: Optional['GeometryCheckpoint'] = None
-        self._last_op_checkpoint: Optional['GeometryCheckpoint'] = None
+        self._topology: Optional["Topology"] = None
+        self._last_checkpoint: Optional["GeometryCheckpoint"] = None
+        self._last_op_checkpoint: Optional["GeometryCheckpoint"] = None
 
     @override
     def _create_empty_object(self):
@@ -36,7 +51,7 @@ class Part(Object):
         return obj
 
     @override
-    def copy(self) -> 'Part':
+    def copy(self) -> "Part":
         """Creates a copy of the Part and its underlying Blender object."""
         if self.obj is None:
             raise RuntimeError("Object is removed")
@@ -56,7 +71,7 @@ class Part(Object):
             if mesh_data and mesh_data.users == 0:
                 bpy.data.meshes.remove(mesh_data)
         super().remove(physical)
-    
+
     def hash(self, precision=4, use_materials=False):
         """Generates a SHA256 hash based on geometry, materials, and world matrix."""
         if self.obj is None:
@@ -68,18 +83,20 @@ class Part(Object):
         # Rounding mitigates float precision differences (e.g., 0.0000001)
         verts_coords = [0.0] * (len(mesh.vertices) * 3)
         mesh.vertices.foreach_get("co", verts_coords)
-        
+
         # Group by (x,y,z) and round each component
-        rounded_verts = [tuple(round(v, precision) for v in mesh.vertices[i].co) 
-                        for i in range(len(mesh.vertices))]
-        
+        rounded_verts = [
+            tuple(round(v, precision) for v in mesh.vertices[i].co)
+            for i in range(len(mesh.vertices))
+        ]
+
         # SORT the vertex list. This is CRUCIAL:
         # It makes the hash independent of the vertex order in the mesh storage
         rounded_verts.sort()
-        
+
         # Pack sorted and rounded coordinates
         for v in rounded_verts:
-            hash_m.update(struct.pack('3f', *v))
+            hash_m.update(struct.pack("3f", *v))
 
         # 2. Face materials (if enabled)
         if use_materials:
@@ -95,22 +112,24 @@ class Part(Object):
             num_slots = len(material_cache)
             for p in mesh.polygons:
                 slot_index = p.material_index
-                
+
                 # Retrieve from cache or fallback if index is out of bounds
                 if 0 <= slot_index < num_slots:
                     mat_hash = material_cache[slot_index]
                 else:
                     mat_hash = "None"
-                
+
                 # Update hash
-                hash_m.update(mat_hash.encode('utf-8'))
+                hash_m.update(mat_hash.encode("utf-8"))
 
         # 3. Transformation matrix
-        matrix_flat = [round(val, precision) for row in self.transform.matrix for val in row]
-        hash_m.update(struct.pack('16f', *matrix_flat))
+        matrix_flat = [
+            round(val, precision) for row in self.transform.matrix for val in row
+        ]
+        hash_m.update(struct.pack("16f", *matrix_flat))
 
         return hash_m.hexdigest()
-    
+
     @property
     def has_polygons(self):
         """Checks if the part has any polygons."""
@@ -124,7 +143,7 @@ class Part(Object):
         pass
 
     @mat.setter
-    def mat(self, material: Optional['mat.Layer']):
+    def mat(self, material: Optional["mat.Layer"]):
         """Sets the material for the selected faces (or all faces if none selected)."""
         self._set_material(material)
 
@@ -134,14 +153,20 @@ class Part(Object):
         pass
 
     @default_mat.setter
-    def default_mat(self, material: Optional['mat.Layer']):
+    def default_mat(self, material: Optional["mat.Layer"]):
         """
-        Sets the default material at index 0. 
+        Sets the default material at index 0.
         If specific face materials are removed (set to None), this material will be used.
         """
         self._set_material(material, replace=False, default=True)
 
-    def _set_material(self, material: Optional['mat.Layer'], faces: List['BMFaceWrapper'] | None = None, replace: bool = True, default: bool = False):
+    def _set_material(
+        self,
+        material: Optional["mat.Layer"],
+        faces: list["BMFaceWrapper"] | None = None,
+        replace: bool = True,
+        default: bool = False,
+    ):
         self._ensure_bmesh(write=True)
         faces, all_faces = self._get_actual_bmesh_faces(faces)
         assert not default or len(faces) == len(all_faces)
@@ -152,14 +177,16 @@ class Part(Object):
             f.native.material_index = idx
         self._write_bmesh()
 
-    def _fix_topology(self, remove_double_verts: bool = True, min_vert_dist = 1e-4):
+    def _fix_topology(self, remove_double_verts: bool = True, min_vert_dist=1e-4):
         """Fixes the topology for the further correct topology analysis."""
         bm = self._ensure_bmesh(write=True)
         if remove_double_verts:
-            bmesh.ops.remove_doubles(bm.native, verts=bm.native.verts, dist=min_vert_dist)
+            bmesh.ops.remove_doubles(
+                bm.native, verts=bm.native.verts, dist=min_vert_dist
+            )
         loose_verts = [v for v in bm.native.verts if not v.link_edges]
         if loose_verts:
-            bmesh.ops.delete(bm.native, geom=loose_verts, context='VERTS')
+            bmesh.ops.delete(bm.native, geom=loose_verts, context="VERTS")
         bm.native.verts.index_update()
         self._write_bmesh()
 
@@ -179,12 +206,14 @@ class Part(Object):
             bm.edges.layers.float.new("bevel_weight_edge")
             self._bm_wrapper = BMeshWrapper(bm)
         return self._bm_wrapper
-    
-    def _get_actual_geometry(self, items: List, all_items: List, name: str, remove_duplicates: bool) -> List:
+
+    def _get_actual_geometry(
+        self, items: list, all_items: list, name: str, remove_duplicates: bool
+    ) -> list:
         """Internal helper maintaining original mapping logic."""
         if not items:
             return all_items
-        
+
         item_map = {i: i for i in all_items}
         try:
             actual_items = [item_map[i] for i in items]
@@ -192,23 +221,37 @@ class Part(Object):
                 actual_items = list(dict.fromkeys(actual_items))
             return actual_items
         except KeyError:
-            raise RuntimeError(f"{name.capitalize()} are not valid for this object anymore. Recall {name}().")
+            raise RuntimeError(
+                f"{name.capitalize()} are not valid for this object anymore. Recall {name}()."
+            )
 
-    def _get_actual_bmesh_faces(self, faces: List['BMEdgeWrapper'] | None = None, remove_duplicates = True):
+    def _get_actual_bmesh_faces(
+        self, faces: list["BMEdgeWrapper"] | None = None, remove_duplicates=True
+    ):
         bm = self._ensure_bmesh()
-        actual: List['BMFaceWrapper'] = self._get_actual_geometry(faces, bm.faces, "faces", remove_duplicates)
+        actual: list["BMFaceWrapper"] = self._get_actual_geometry(
+            faces, bm.faces, "faces", remove_duplicates
+        )
         return actual, bm.faces
 
-    def _get_actual_bmesh_edges(self, edges: List['BMEdgeWrapper'] | None = None, remove_duplicates = True):
+    def _get_actual_bmesh_edges(
+        self, edges: list["BMEdgeWrapper"] | None = None, remove_duplicates=True
+    ):
         bm = self._ensure_bmesh()
-        actual: List['BMEdgeWrapper'] = self._get_actual_geometry(edges, bm.edges, "edges", remove_duplicates)
+        actual: list["BMEdgeWrapper"] = self._get_actual_geometry(
+            edges, bm.edges, "edges", remove_duplicates
+        )
         return actual, bm.edges
 
-    def _get_actual_bmesh_verts(self, verts: List['BMVertWrapper'] | None = None, remove_duplicates = True):
+    def _get_actual_bmesh_verts(
+        self, verts: list["BMVertWrapper"] | None = None, remove_duplicates=True
+    ):
         bm = self._ensure_bmesh()
-        actual: List['BMVertWrapper'] = self._get_actual_geometry(verts, bm.verts, "vertices", remove_duplicates)
+        actual: list["BMVertWrapper"] = self._get_actual_geometry(
+            verts, bm.verts, "vertices", remove_duplicates
+        )
         return actual, bm.verts
-    
+
     def _write_bmesh(self, flush=False):
         """Writes the current BMesh data back to the Blender mesh."""
         if self.obj is None:
@@ -229,40 +272,41 @@ class Part(Object):
             self._topology = None
             self._last_checkpoint = None
 
-    def make_checkpoint(self) -> 'GeometryCheckpoint':
+    def make_checkpoint(self) -> "GeometryCheckpoint":
         """
-        Fixes the current state as the last checkpoint. 
+        Fixes the current state as the last checkpoint.
         If it already exists, returns the current one.
         """
         if self._last_checkpoint is None:
             from .geometry import GeometryCheckpoint
+
             bm = self._ensure_bmesh()
             self._last_checkpoint = GeometryCheckpoint(bm)
         return self._last_checkpoint
-    
+
     def _make_op_checkpoint(self):
         self._last_op_checkpoint = self.make_checkpoint()
         return self._last_op_checkpoint
-    
+
     def _add_vertices(
-        self, 
-        coords: List[Vector], 
-        write: bool = False, 
-    ) -> List[bmesh.types.BMVert]:
+        self,
+        coords: list[Vector],
+        write: bool = False,
+    ) -> list[bmesh.types.BMVert]:
         """Adds a list of coordinates as loose vertices to the BMesh."""
         bm = self._ensure_bmesh(write)
-        vertices: List[bmesh.types.BMVert] = []
+        vertices: list[bmesh.types.BMVert] = []
 
         for co in coords:
             v = bm.native.verts.new(co)
             vertices.append(v)
-        
+
         if write:
             self._write_bmesh()
 
         return vertices
-    
-    def get_vertices(self) -> List[Vector]:
+
+    def get_vertices(self) -> list[Vector]:
         return [v.co for v in self._ensure_bmesh().verts]
 
     def _ensure_joint_layers(self):
@@ -278,24 +322,33 @@ class Part(Object):
             joint_role_layer = bm.native.verts.layers.int.new("bp_joint_role")
 
         return joint_id_layer, joint_role_layer
-    
-    def _inject_joint_markers(self, write=False) -> List[bmesh.types.BMVert]:
+
+    def _inject_joint_markers(self, write=False) -> list[bmesh.types.BMVert]:
         """Adds temporary loose vertices for all deformable joints."""
         if not self._deformable_joints:
             return []
         from .joint import JointRole
+
         bm = self._ensure_bmesh(write)
         joint_id_layer, joint_role_layer = self._ensure_joint_layers()
 
-        markers: List[bmesh.types.BMVert] = []
+        markers: list[bmesh.types.BMVert] = []
         eps = 0.001
 
         for joint in self._deformable_joints:
             # Use local-space coordinates, not world-space coordinates.
             loc = joint._rel_loc.matrix
             o = loc.to_translation()
-            x = (loc.col[0].to_3d().normalized() if loc.col[0].to_3d().length > 1e-9 else Vector((1, 0, 0))) * eps
-            y = (loc.col[1].to_3d().normalized() if loc.col[1].to_3d().length > 1e-9 else Vector((0, 1, 0))) * eps
+            x = (
+                loc.col[0].to_3d().normalized()
+                if loc.col[0].to_3d().length > 1e-9
+                else Vector((1, 0, 0))
+            ) * eps
+            y = (
+                loc.col[1].to_3d().normalized()
+                if loc.col[1].to_3d().length > 1e-9
+                else Vector((0, 1, 0))
+            ) * eps
 
             # Three points encode an origin plus two independent axes. Blender
             # deforms them with the mesh, allowing sync to rebuild the frame.
@@ -315,12 +368,13 @@ class Part(Object):
         if write:
             self._write_bmesh()
         return markers
-    
+
     def _sync_joint_markers(self, write=False):
         """Reads temporary marker vertices back and updates attached joints."""
         if not self._deformable_joints:
             return
         from .joint import JointRole
+
         bm = self._ensure_bmesh(write)
         joint_id_layer, joint_role_layer = self._ensure_joint_layers()
 
@@ -343,9 +397,9 @@ class Part(Object):
                 continue
 
             if (
-                JointRole.ORIGIN in data and
-                JointRole.X_AXIS in data and
-                JointRole.Y_AXIS in data
+                JointRole.ORIGIN in data
+                and JointRole.X_AXIS in data
+                and JointRole.Y_AXIS in data
             ):
                 # Joint frame reconstruction also rejects collapsed marker axes
                 # so a severe deformation cannot leave a silently invalid port.
@@ -356,7 +410,7 @@ class Part(Object):
                 )
 
         # remove markers
-        bmesh.ops.delete(bm.native, geom=to_delete, context='VERTS')
+        bmesh.ops.delete(bm.native, geom=to_delete, context="VERTS")
 
         if write:
             self._write_bmesh()
@@ -382,27 +436,28 @@ class Part(Object):
     def _get_topology(self):
         """Returns a cached or new topology graph."""
         from .geometry import Topology
+
         if self._topology is None or self.topology_config != self._topology.config:
             self._topology = Topology(self._ensure_bmesh(), self, self.topology_config)
         return self._topology
 
     # Selectors return specialized wrappers
-    def faces(self) -> ShapeList['Face']:
+    def faces(self) -> ShapeList["Face"]:
         """Returns a ShapeList of Face objects."""
         return ShapeList(self._get_topology().faces)
 
-    def wires(self) -> ShapeList['Wire']:
+    def wires(self) -> ShapeList["Wire"]:
         """Returns a ShapeList of Wire objects."""
         return ShapeList(self._get_topology().wires)
-    
-    def edges(self) -> ShapeList['Edge']:
+
+    def edges(self) -> ShapeList["Edge"]:
         """Returns a ShapeList of Edge objects."""
         return ShapeList(self._get_topology().edges)
 
-    def vertices(self) -> ShapeList['Vertex']:
+    def vertices(self) -> ShapeList["Vertex"]:
         """Returns a ShapeList of Vertex objects."""
         return ShapeList(self._get_topology().vertices)
-    
+
     @staticmethod
     def from_any_mesh(mesh: bpy.types.Mesh, name: str = "unknown"):
         """Creates a Part from a Blender mesh (including evaluated meshes)."""
@@ -412,19 +467,21 @@ class Part(Object):
         bm.to_mesh(physical_mesh)
         bm.free()
         return Part(obj=bpy.data.objects.new(name, physical_mesh))
-    
+
     @staticmethod
     def from_any_object(obj: bpy.types.Object):
         """Creates a Part from a Blender object (including evaluated objects)."""
         dg = bpy.context.evaluated_depsgraph_get()
         eval_obj = obj.evaluated_get(dg)
         return Part.from_any_mesh(eval_obj.to_mesh(), obj.name)
-    
+
     @staticmethod
-    def box_set_empty(topology: Optional['TopologyConfig'] = None):
+    def box_set_empty(topology: Optional["TopologyConfig"] = None):
         return BoxSetPart(topology=topology)
 
-T = TypeVar('T', bound='Any')
+
+T = TypeVar("T", bound="Any")
+
 
 class BoxSetPart(Part):
     """
@@ -436,36 +493,39 @@ class BoxSetPart(Part):
     @dataclass
     class Box(Generic[T]):
         """Stores geometric metadata for a single box primitive."""
+
         transform: Transform
         size: Vector
         custom_data: Optional[T] = None
 
         @property
         def part(self):
-            from .primitives import Box
             from .build_part import Mode
+            from .primitives import Box
+
             return Box(
-                self.size.x,
-                self.size.y,
-                self.size.z,
-                mode=Mode.PRIVATE
+                self.size.x, self.size.y, self.size.z, mode=Mode.PRIVATE
             ).create_part()
 
     def __init__(
         self,
-        boxes: Optional[List[Box]] = None,
+        boxes: Optional[list[Box]] = None,
         size: Optional[Vector] = None,
-        topology: Optional['TopologyConfig'] = None,
+        topology: Optional["TopologyConfig"] = None,
         custom_data: Optional[T] = None,
-        transform: Transform = Transform()
+        transform: Transform = Transform(),
     ):
-        self.boxes: List[BoxSetPart.Box] = boxes or []
+        self.boxes: list[BoxSetPart.Box] = boxes or []
         if size is not None:
-            self.boxes.append(BoxSetPart.Box(transform=Transform(), size=Vector(size), custom_data=custom_data))
+            self.boxes.append(
+                BoxSetPart.Box(
+                    transform=Transform(), size=Vector(size), custom_data=custom_data
+                )
+            )
         self._transform: Transform = transform
 
         self._obj_cache: Optional[bpy.types.Object] = None
-        self._vertices_cache: Optional[List[Vector]] = None
+        self._vertices_cache: Optional[list[Vector]] = None
         self._bbox_cache: Optional[Part.BBox] = None
         super().__init__(obj=None, topology=topology)
 
@@ -477,7 +537,7 @@ class BoxSetPart(Part):
 
     @transform.setter
     @override
-    def transform(self, value: 'TransformExpr'):
+    def transform(self, value: "TransformExpr"):
         """Sets transformation matrix directly in Python state."""
         self._transform = value.resolve(self)
         if self._obj_cache is not None:
@@ -503,11 +563,13 @@ class BoxSetPart(Part):
         """
         bbox = self.local_bbox
         local_dims = bbox.max - bbox.min
-        return Vector((
-            local_dims.x * self.scale.x,
-            local_dims.y * self.scale.y,
-            local_dims.z * self.scale.z
-        ))
+        return Vector(
+            (
+                local_dims.x * self.scale.x,
+                local_dims.y * self.scale.y,
+                local_dims.z * self.scale.z,
+            )
+        )
 
     @size.setter
     @override
@@ -515,11 +577,13 @@ class BoxSetPart(Part):
         """Adjusts scale based on desired overall dimensions."""
         target_size = extract_vector(value)
         orig = self.orig_size
-        self.scale = Vector((
-            target_size.x / orig.x if orig.x > 1e-9 else 1.0,
-            target_size.y / orig.y if orig.y > 1e-9 else 1.0,
-            target_size.z / orig.z if orig.z > 1e-9 else 1.0
-        ))
+        self.scale = Vector(
+            (
+                target_size.x / orig.x if orig.x > 1e-9 else 1.0,
+                target_size.y / orig.y if orig.y > 1e-9 else 1.0,
+                target_size.z / orig.z if orig.z > 1e-9 else 1.0,
+            )
+        )
 
     @override
     def _create_empty_object(self) -> Optional[bpy.types.Object]:
@@ -551,7 +615,7 @@ class BoxSetPart(Part):
         if self._obj_cache is None:
             self._rebuild_mesh()
         return self._obj_cache
-    
+
     @obj.setter
     def obj(self, value: Optional[bpy.types.Object]):
         self.invalidate_mesh_cache()
@@ -559,14 +623,11 @@ class BoxSetPart(Part):
 
     # Unit cube corner vectors centered at the origin [-0.5, 0.5]
     _UNIT_CORNERS = tuple(
-        Vector((x, y, z))
-        for x in (-0.5, 0.5)
-        for y in (-0.5, 0.5)
-        for z in (-0.5, 0.5)
+        Vector((x, y, z)) for x in (-0.5, 0.5) for y in (-0.5, 0.5) for z in (-0.5, 0.5)
     )
 
     @override
-    def get_vertices(self) -> List[Vector]:
+    def get_vertices(self) -> list[Vector]:
         """
         Calculates and caches all 8 local corner vertices for every box in the set.
         """
@@ -602,16 +663,20 @@ class BoxSetPart(Part):
         # Transform cached local vertices by target matrix
         transformed_verts = [matrix @ v for v in vertices]
 
-        min_v = Vector((
-            min(v.x for v in transformed_verts),
-            min(v.y for v in transformed_verts),
-            min(v.z for v in transformed_verts)
-        ))
-        max_v = Vector((
-            max(v.x for v in transformed_verts),
-            max(v.y for v in transformed_verts),
-            max(v.z for v in transformed_verts)
-        ))
+        min_v = Vector(
+            (
+                min(v.x for v in transformed_verts),
+                min(v.y for v in transformed_verts),
+                min(v.z for v in transformed_verts),
+            )
+        )
+        max_v = Vector(
+            (
+                max(v.x for v in transformed_verts),
+                max(v.y for v in transformed_verts),
+                max(v.z for v in transformed_verts),
+            )
+        )
 
         bbox = self.BBox(min=min_v, max=max_v)
         self._bbox_cache = bbox
@@ -630,7 +695,7 @@ class BoxSetPart(Part):
                     BoxSetPart.Box(
                         transform=combined_transform,
                         size=box.size.copy(),
-                        custom_data=box.custom_data
+                        custom_data=box.custom_data,
                     )
                 )
         else:
@@ -640,12 +705,7 @@ class BoxSetPart(Part):
             center = (bbox.max + bbox.min) / 2.0
 
             box_transform = part.transform * Pos(center)
-            self.boxes.append(
-                BoxSetPart.Box(
-                    transform=box_transform,
-                    size=box_size
-                )
-            )
+            self.boxes.append(BoxSetPart.Box(transform=box_transform, size=box_size))
 
         self.invalidate_mesh_cache()
 
@@ -670,12 +730,12 @@ class BoxSetPart(Part):
         mesh.update()
 
     def apply_transform(
-        self, 
-        op: TransformExpr = Transform(), 
-        space: Location = Location(), 
+        self,
+        op: TransformExpr = Transform(),
+        space: Location = Location(),
     ):
         """
-        Applies transformation directly to internal BoxData primitives 
+        Applies transformation directly to internal BoxData primitives
         without building or touching BMesh / Blender object.
         """
         if not self.boxes:
@@ -686,20 +746,20 @@ class BoxSetPart(Part):
             box.transform = delta_tr * box.transform
 
     @override
-    def copy(self) -> 'BoxSetPart':
+    def copy(self) -> "BoxSetPart":
         """Deep copies box descriptors without immediately duplicating Blender mesh data."""
         boxes_copy = [
             BoxSetPart.Box(
                 transform=b.transform.copy(),
                 size=b.size.copy(),
-                custom_data=b.custom_data
+                custom_data=b.custom_data,
             )
             for b in self.boxes
         ]
         part = BoxSetPart(
             boxes=boxes_copy,
             topology=self.topology_config,
-            transform=self.transform.copy()
+            transform=self.transform.copy(),
         )
         part._obj_cache = self._obj_cache
         part._vertices_cache = self._vertices_cache

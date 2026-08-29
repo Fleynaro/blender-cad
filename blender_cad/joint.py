@@ -1,21 +1,29 @@
+from collections.abc import Iterable
 from enum import IntEnum
-from typing import Iterable, Optional, Union
-from mathutils import Vector, Matrix
+from typing import Optional, Union
+
+from mathutils import Matrix, Vector
 
 from .build_part import BuildPart, Mode
-from .material import mat
 from .location import Location, Transform, align
+from .material import mat
 from .object import Object
+
 
 class JointRole(IntEnum):
     """Marker roles used to reconstruct the joint local frame."""
+
     ORIGIN = 0
     X_AXIS = 1
     Y_AXIS = 2
 
+
 class Joint:
     """Represents a joint for connecting two parts."""
-    def __init__(self, loc: Location, object: Optional[Object] = None, deformable: bool = False):
+
+    def __init__(
+        self, loc: Location, object: Optional[Object] = None, deformable: bool = False
+    ):
         self.object = object or BuildPart._get_context().part
         # Store the frame in owner-local space so object transforms keep the
         # joint attached without rewriting its definition.
@@ -28,27 +36,28 @@ class Joint:
     def loc(self):
         """Access the global location of the joint."""
         return Location(self._rel_loc.matrix, parent_loc=self.object.loc)
-    
+
     def offset(self, value: Location):
         return Joint(self.loc * value, self.object, self.deformable)
 
     def to(
         self,
-        joint: Union['Joint', 'Location'],
+        joint: Union["Joint", "Location"],
         op: Optional[Transform] = Transform(),
         twist: Optional[float] = None,
         move_only: bool = False,
         mode: Mode = Mode.ADD,
         mat: Optional[mat.Layer] = None,
-        tag: Optional[str | Iterable[str]] = None
+        tag: Optional[str | Iterable[str]] = None,
     ):
         """Moves the current part to align with the specified joint or location and adds it to the current context with the specified mode."""
         from .modifiers import add
-        from_port=self._rel_loc
-        to_port=joint.loc if isinstance(joint, Joint) else joint
+
+        from_port = self._rel_loc
+        to_port = joint.loc if isinstance(joint, Joint) else joint
         # move_only intentionally supplies the existing world rotation while
         # still translating the source port onto the target port.
-        rot=self.object.loc.quaternion if move_only else None
+        rot = self.object.loc.quaternion if move_only else None
         self.object.loc = align(from_port, to_port, twist, rot)
         self.object.transform *= op
         add(self.object, mode=mode, mat=mat, tag=tag)
@@ -84,10 +93,12 @@ class Joint:
         y = z.cross(x).normalized()
 
         # Blender matrices are easiest to build from the basis vectors.
-        mat = Matrix((
-            (x.x, y.x, z.x, o.x),
-            (x.y, y.y, z.y, o.y),
-            (x.z, y.z, z.z, o.z),
-            (0.0, 0.0, 0.0, 1.0),
-        ))
+        mat = Matrix(
+            (
+                (x.x, y.x, z.x, o.x),
+                (x.y, y.y, z.y, o.y),
+                (x.z, y.z, z.z, o.z),
+                (0.0, 0.0, 0.0, 1.0),
+            )
+        )
         return Location(mat)

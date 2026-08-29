@@ -1,13 +1,14 @@
 from typing import Optional, Self, Union
 
-from .geometry import uv
-from .material import Meta, PBRMaterial, mat
 from .build_part import BuildPart, Mode, faces
+from .common import Axis
+from .geometry import uv
 from .joint import Joint
 from .location import Location, Locations, Scale
+from .material import Meta, PBRMaterial, mat
 from .modifiers import transform
 from .primitives import Box, Cone
-from .common import Axis
+
 
 class Component(BuildPart):
     def __init__(self, mode: Mode = Mode.PRIVATE):
@@ -15,12 +16,20 @@ class Component(BuildPart):
 
     def _joint(self, loc: Location):
         return Joint(loc, object=self.part)
-    
+
     def __enter__(self) -> Self:
         return super().__enter__()
 
+
 class BoxComp(Component):
-    def __init__(self, length: float, width: float, height: float, taper: float = 1, freeze_joints: bool = True):
+    def __init__(
+        self,
+        length: float,
+        width: float,
+        height: float,
+        taper: float = 1,
+        freeze_joints: bool = True,
+    ):
         super().__init__()
         with self:
             Box(length, width, height)
@@ -41,20 +50,26 @@ class BoxComp(Component):
     def _faces(self):
         return self.freezed_faces or self.faces()
 
-    def j_face(self, axis: Axis, selector = uv):
+    def j_face(self, axis: Axis, selector=uv):
         return self._joint(self._faces().sort_by(axis)[-1].at(selector))
 
-    def j_top(self, selector = uv):
+    def j_top(self, selector=uv):
         return self.j_face(Axis.Z, selector)
-    
-    def j_bottom(self, selector = uv):
+
+    def j_bottom(self, selector=uv):
         return self.j_face(-Axis.Z, selector)
-    
+
+
 class Marker(Component):
-    def __init__(self, loc: Optional[Union['Joint', 'Location']] = Location(), size = 1, mode: Mode = Mode.JOIN, mat: mat.Layer = mat.red):
+    def __init__(
+        self,
+        loc: Optional[Union["Joint", "Location"]] = Location(),
+        size=1,
+        mode: Mode = Mode.JOIN,
+        mat: mat.Layer = mat.red,
+    ):
         super().__init__(mode=mode)
-        with Locations(loc if isinstance(loc, Location) else loc.loc):
-            with self:
-                Cone(0.1, 0.01, 0.1)
-                self.scale = size
-                self.mat = mat + PBRMaterial(alpha=0.5) + Meta(name="MarkerMat")
+        with Locations(loc if isinstance(loc, Location) else loc.loc), self:
+            Cone(0.1, 0.01, 0.1)
+            self.scale = size
+            self.mat = mat + PBRMaterial(alpha=0.5) + Meta(name="MarkerMat")

@@ -1,25 +1,36 @@
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 import fnmatch
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Literal,
+    Optional,
+    TypeAlias,
+    Union,
+)
 from weakref import WeakSet, WeakValueDictionary
+
 import bpy
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Literal, NamedTuple, Optional, TypeAlias, Union
-from mathutils import Vector, Matrix
+from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
 from .common import Axis, VectorLike, extract_part, extract_vector
-from .material import build_material, mat
 from .location import Location, Locations, Pos, Scale, Transform, TransformExpr
+from .material import build_material, mat
 
 if TYPE_CHECKING:
-    from .part import Part, BoxSetPart
-    from .joint import Joint
     from .geometry import UVSelector
+    from .joint import Joint
+    from .part import BoxSetPart, Part
 
 AttributeDomainItems: TypeAlias = Literal["POINT", "EDGE", "FACE", "CURVE"]
 
+
 class CustomAttributeItem:
     """Emulates a single Blender attribute data element storing binary string data."""
+
     __slots__ = ("value",)
 
     def __init__(self, value: bytes = b""):
@@ -38,14 +49,17 @@ class CustomAttribute:
         while len(self.data) < size:
             self.data.append(CustomAttributeItem())
 
+
 @dataclass
 class JointRegistration:
     """
     Named joint exposed by an object.
     """
+
     name: str
-    joint: 'Joint'
+    joint: "Joint"
     propagate: bool = True
+
 
 class Object(ABC):
     """An object representing a part. Manages its own mesh and Blender object."""
@@ -68,15 +82,15 @@ class Object(ABC):
     def __init__(self, obj: Optional[bpy.types.Object] = None):
         self.obj: Optional[bpy.types.Object] = obj or self._create_empty_object()
         self._auto_remove = True
-        self._bbox_part: Optional['Part'] = None
+        self._bbox_part: Optional["Part"] = None
         self._bbox_signature: Optional[int] = None
-        self._convex_hull_part: Optional['Part'] = None
+        self._convex_hull_part: Optional["Part"] = None
         self._convex_hull_signature: Optional[int] = None
-        self._joints: WeakSet['Joint'] = WeakSet()
-        self._joints_by_id: WeakValueDictionary[int, 'Joint'] = WeakValueDictionary()
+        self._joints: WeakSet["Joint"] = WeakSet()
+        self._joints_by_id: WeakValueDictionary[int, "Joint"] = WeakValueDictionary()
         self._joint_seq = 0
         self._joint_registry: list[JointRegistration] = []
-        self._custom_attributes: Dict[str, CustomAttribute] = {}
+        self._custom_attributes: dict[str, CustomAttribute] = {}
 
     def __del__(self):
         if self._auto_remove:
@@ -101,16 +115,16 @@ class Object(ABC):
     @property
     def transform(self):
         """Access the transformation of the part."""
-        # We decompose matrix_world but use self.obj.scale directly because 
-        # matrix_world is updated lazily by Blender and might hold stale scale 
+        # We decompose matrix_world but use self.obj.scale directly because
+        # matrix_world is updated lazily by Blender and might hold stale scale
         # data until the next dependency graph update.
         loc, rot, _ = self.obj.matrix_world.decompose()
         scale = self.obj.scale
         mat = Matrix.LocRotScale(loc, rot, scale)
         return Transform(mat)
-    
+
     @transform.setter
-    def transform(self, value: 'TransformExpr'):
+    def transform(self, value: "TransformExpr"):
         """Sets the transformation of the part."""
         self.obj.matrix_world = value.resolve(self).matrix
 
@@ -118,9 +132,9 @@ class Object(ABC):
     def loc(self):
         """Access the location of the part."""
         return self.transform.loc
-    
+
     @loc.setter
-    def loc(self, loc: 'TransformExpr'):
+    def loc(self, loc: "TransformExpr"):
         """Sets the location of the part."""
         self.transform = loc * Scale(self.scale)
 
@@ -132,15 +146,15 @@ class Object(ABC):
     @scale.setter
     def scale(self, value: VectorLike):
         """
-        Sets the scale of the part. 
-        """ 
+        Sets the scale of the part.
+        """
         self.obj.scale = extract_vector(value)
 
     @property
     def size(self):
         """Access the size of the part. It allows to change the size by x, y, z."""
         return self.obj.dimensions
-    
+
     @size.setter
     def size(self, value: VectorLike):
         """Sets the size of the part."""
@@ -150,22 +164,23 @@ class Object(ABC):
     def orig_size(self):
         """Access the original size of the part."""
         return Vector([self.size[i] / self.scale[i] for i in range(3)])
-    
+
     @property
     def bbox(self):
         """Access the bounding box of the part."""
         return self._bbox_from_matrix(self.transform.matrix)
-    
+
     @property
     def local_bbox(self):
         """Access the local bounding box of the part."""
         return self._bbox_from_matrix()
-    
-    def get_bbox_set_part(self, custom_data: Optional[Any] = None) -> 'BoxSetPart':
+
+    def get_bbox_set_part(self, custom_data: Optional[Any] = None) -> "BoxSetPart":
         """Box Set Part representing this object's bounding box."""
-        from .part import Part
         from .build_part import BuildPart, Mode
+        from .part import Part
         from .primitives import Box
+
         with BuildPart(part=Part.box_set_empty(), mode=Mode.PRIVATE) as bp:
             bb = self.local_bbox
             box_w = max(bb.max.x - bb.min.x, 1e-6)
@@ -174,18 +189,20 @@ class Object(ABC):
             center_offset = Pos(
                 X=(bb.min.x + bb.max.x) / 2.0,
                 Y=(bb.min.y + bb.max.y) / 2.0,
-                Z=(bb.min.z + bb.max.z) / 2.0
+                Z=(bb.min.z + bb.max.z) / 2.0,
             )
             with Locations(center_offset):
                 Box(box_w, box_h, box_d, custom_data=custom_data)
             bp.transform = self.transform
         return bp.part
-    
+
     @property
-    def bbox_part(self) -> 'Part':
+    def bbox_part(self) -> "Part":
         """Part representing this object's bounding box."""
-        from .part import Part
         import bmesh
+
+        from .part import Part
+
         if not self.is_valid:
             raise RuntimeError("Object is removed")
 
@@ -226,11 +243,7 @@ class Object(ABC):
             (max_x, max_y, min_z),
         ]
 
-        signature = hash(tuple(
-            round(c, 6)
-            for v in verts
-            for c in v
-        ))
+        signature = hash(tuple(round(c, 6) for v in verts for c in v))
 
         rebuild = (
             self._bbox_part is None
@@ -256,7 +269,7 @@ class Object(ABC):
             bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
             bm.to_mesh(mesh)
             bm.free()
-            
+
             mesh.update()
 
             obj = bpy.data.objects.new(f"{self.obj.name}_bbox", mesh)
@@ -266,12 +279,14 @@ class Object(ABC):
 
         self._bbox_part.transform = self.transform
         return self._bbox_part
-    
+
     @property
-    def convex_hull_part(self) -> 'Part':
+    def convex_hull_part(self) -> "Part":
         """Part representing this object's convex hull (more accurate alternative to bbox)."""
-        from .part import Part
         import bmesh
+
+        from .part import Part
+
         if not self.is_valid:
             raise RuntimeError("Object is removed")
 
@@ -281,18 +296,14 @@ class Object(ABC):
 
         bm = bmesh.new()
         bm.from_mesh(mesh_data)
-        
+
         if len(bm.verts) >= 3:
             bmesh.ops.convex_hull(bm, input=bm.verts)
-        
+
         bm.verts.ensure_lookup_table()
 
         hull_verts = sorted([tuple(v.co) for v in bm.verts])
-        signature = hash(tuple(
-            round(c, 6)
-            for v in hull_verts
-            for c in v
-        ))
+        signature = hash(tuple(round(c, 6) for v in hull_verts for c in v))
 
         rebuild = (
             self._convex_hull_part is None
@@ -315,12 +326,19 @@ class Object(ABC):
 
         self._convex_hull_part.transform = self.transform
         return self._convex_hull_part
-    
-    def project_2d(self, plane: Axis = Axis.Z, dissolve_limit: float = 0.001, remove_doubles: bool = True) -> 'Part':
+
+    def project_2d(
+        self,
+        plane: Axis = Axis.Z,
+        dissolve_limit: float = 0.001,
+        remove_doubles: bool = True,
+    ) -> "Part":
         """Creates a flat 2D silhouette projection of this object onto the selected plane."""
-        from .part import Part
-        from .modifiers import _apply_transform
         import bmesh
+
+        from .modifiers import _apply_transform
+        from .part import Part
+
         if not self.is_valid:
             raise RuntimeError("Object is removed")
 
@@ -348,7 +366,7 @@ class Object(ABC):
         # Delete degenerate faces that collapsed into flat lines or points
         bm.faces.ensure_lookup_table()
         degenerate_faces = [f for f in bm.faces if f.calc_area() < 1e-6]
-        bmesh.ops.delete(bm, geom=degenerate_faces, context='FACES')
+        bmesh.ops.delete(bm, geom=degenerate_faces, context="FACES")
 
         # Merge overlapping vertices created by the projection flattening
         if remove_doubles:
@@ -362,14 +380,14 @@ class Object(ABC):
                 bm,
                 angle_limit=dissolve_limit,
                 verts=list(bm.verts),
-                edges=list(bm.edges)
+                edges=list(bm.edges),
             )
 
         # Create a new Blender mesh for the 2D shape
         new_mesh = bpy.data.meshes.new(f"{self.obj.name}_2d_mesh")
         bm.to_mesh(new_mesh)
         new_mesh.update()
-        
+
         # Clean up temporary BMesh and evaluated mesh data references
         bm.free()
         eval_obj.to_mesh_clear()
@@ -379,13 +397,14 @@ class Object(ABC):
         new_part = Part(new_obj)
         new_part.transform = self.transform * rot_loc.inverse
         return new_part
-    
+
     def build_bvh(self, ensure_outwards_normals: bool = True):
         """
         Returns a BVH tree for the evaluated mesh of the object.
         Handles edge-only and vertex-only objects by generating degenerate polygons.
         """
         import bmesh
+
         if not self.is_valid:
             raise RuntimeError("Object is removed")
 
@@ -402,7 +421,7 @@ class Object(ABC):
             # Ensure all face normals look outwards
             if ensure_outwards_normals:
                 bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-            
+
             # Extract flipped geometry
             bm.verts.ensure_lookup_table()
             vertices = [v.co.copy() for v in bm.verts]
@@ -413,7 +432,9 @@ class Object(ABC):
             # TODO: ensure outwards normals
             bm.verts.ensure_lookup_table()
             vertices = [v.co.copy() for v in bm.verts]
-            polygons = [(e.verts[0].index, e.verts[1].index, e.verts[0].index) for e in bm.edges]
+            polygons = [
+                (e.verts[0].index, e.verts[1].index, e.verts[0].index) for e in bm.edges
+            ]
 
         elif bm.verts:
             # Vertex-only case: Degenerate polygons
@@ -434,15 +455,15 @@ class Object(ABC):
         # Build BVH tree with switched normals
         bvh = BVHTree.FromPolygons(vertices, polygons)
         return bvh
-    
+
     @property
     def empty(self):
         return self.size == Vector()
-    
+
     @property
     def _deformable_joints(self):
         return [j for j in list(self._joints) if j.deformable]
-    
+
     @property
     def joints(self) -> list[JointRegistration]:
         """
@@ -450,27 +471,40 @@ class Object(ABC):
         """
         return list(self._joint_registry)
 
-    def joint(self, loc: Union['Location', Callable[[], 'Location']], deformable: bool = False):
+    def joint(
+        self, loc: Union["Location", Callable[[], "Location"]], deformable: bool = False
+    ):
         from .joint import Joint
+
         if callable(loc):
             from .build_part import BuildPart, Mode
+
             with BuildPart(extract_part(self), mode=Mode.PRIVATE) as ctx:
                 return Joint(loc(), self, deformable=deformable)
         return Joint(loc, self, deformable=deformable)
-    
-    def bbox_joint(self, axis: Axis | Vector, selector: Optional['UVSelector'] = None, deformable: bool = False):
+
+    def bbox_joint(
+        self,
+        axis: Axis | Vector,
+        selector: Optional["UVSelector"] = None,
+        deformable: bool = False,
+    ):
         from .geometry import uv
-        return self.joint(self.bbox_part.faces().group_by(axis)[-1][0].at(selector or uv), deformable=deformable)
-    
-    def joints_by_name(self, *names: str) -> list['Joint']:
+
+        return self.joint(
+            self.bbox_part.faces().group_by(axis)[-1][0].at(selector or uv),
+            deformable=deformable,
+        )
+
+    def joints_by_name(self, *names: str) -> list["Joint"]:
         """
         Returns a list of registered joints matching the specified names or patterns.
         Results are returned in the exact order the names were provided in the arguments.
         """
-        result: list['Joint'] = []
-        
+        result: list["Joint"] = []
+
         for target in names:
-            if '*' in target:
+            if "*" in target:
                 for item in self._joint_registry:
                     if fnmatch.fnmatchcase(item.name, target):
                         result.append(item.joint)
@@ -479,44 +513,34 @@ class Object(ABC):
                     if item.name == target:
                         result.append(item.joint)
                         break
-                        
+
         return result
 
-    def joint_by_name(self, name: str) -> 'Joint':
+    def joint_by_name(self, name: str) -> "Joint":
         """
         Returns a registered joint by name.
         """
         joints = self.joints_by_name(name)
         if joints:
             return joints[0]
-        raise KeyError(
-            f"Joint '{name}' not found"
-        )
-    
+        raise KeyError(f"Joint '{name}' not found")
+
     def has_joint(self, name: str) -> bool:
-        return any(
-            x.name == name
-            for x in self._joint_registry
-        )
-    
+        return any(x.name == name for x in self._joint_registry)
+
     def register_joint(
         self,
         name: str,
-        joint: 'Joint',
+        joint: "Joint",
         propagate: bool = False,
     ):
         """
         Registers a named joint on this object.
         """
         if joint.object != self:
-            raise ValueError(
-                f"Joint '{name}' is registered on a different object"
-            )
-        
-        existing = next(
-            (x for x in self._joint_registry if x.name == name),
-            None
-        )
+            raise ValueError(f"Joint '{name}' is registered on a different object")
+
+        existing = next((x for x in self._joint_registry if x.name == name), None)
         if existing:
             self._joint_registry.remove(existing)
 
@@ -528,11 +552,9 @@ class Object(ABC):
             )
         )
         return joint
-    
+
     def _transfer_registered_joints(
-        self,
-        target: 'Object',
-        propagate_only: bool = False
+        self, target: "Object", propagate_only: bool = False
     ):
         """
         Transfers named joints preserving
@@ -549,7 +571,7 @@ class Object(ABC):
                 ),
                 propagate=entry.propagate,
             )
-    
+
     def _bbox_from_matrix(self, matrix: Matrix = Matrix.Identity(4)) -> BBox:
         """Access the bounding box of the part."""
         dg = bpy.context.evaluated_depsgraph_get()
@@ -559,21 +581,21 @@ class Object(ABC):
         ys = [c.y for c in world_corners]
         zs = [c.z for c in world_corners]
         return self.BBox(
-            min = Vector((min(xs), min(ys), min(zs))),
-            max = Vector((max(xs), max(ys), max(zs)))
+            min=Vector((min(xs), min(ys), min(zs))),
+            max=Vector((max(xs), max(ys), max(zs))),
         )
-    
+
     @abstractmethod
     def _create_empty_object(self):
         raise NotImplementedError
-    
+
     @abstractmethod
-    def copy(self) -> 'Object':
+    def copy(self) -> "Object":
         raise NotImplementedError
-    
-    def _after_copy(self, cloned: 'Object'):
+
+    def _after_copy(self, cloned: "Object"):
         self._transfer_registered_joints(cloned)
-    
+
     def remove(self, physical=True):
         """Safely removes the object and its data from the Blender scene."""
         if self.is_valid:
@@ -581,7 +603,9 @@ class Object(ABC):
                 bpy.data.objects.remove(self.obj, do_unlink=True)
             self.obj = None
 
-    def show(self, name: str | None = None, hide = False, collection_name: str | None = None):
+    def show(
+        self, name: str | None = None, hide=False, collection_name: str | None = None
+    ):
         """Displays the object in the Blender scene."""
         if not self.is_valid:
             raise RuntimeError("Object is removed")
@@ -590,7 +614,7 @@ class Object(ABC):
             old_obj = bpy.data.objects.get(name)
             if old_obj:
                 bpy.data.objects.remove(old_obj, do_unlink=True)
-            
+
             self.obj.name = name
 
         target_col = bpy.context.collection
@@ -614,7 +638,7 @@ class Object(ABC):
         fov: float = 39.6,
         resolution: tuple[int, int] = (1024, 1024),
         offset: Location = Location(),
-        label: str | None = None
+        label: str | None = None,
     ):
         """
         Temporarily isolates the object by hiding everything else in the scene,
@@ -624,7 +648,7 @@ class Object(ABC):
             raise RuntimeError("Part object is removed or invalid")
 
         scene_col = bpy.context.scene.collection
-        
+
         # 1. Track original state of the target object
         is_linked_originally = self.obj.name in scene_col.objects
         if not is_linked_originally:
@@ -636,7 +660,7 @@ class Object(ABC):
 
         # 2. ISOLATION LOGIC: Hide all other objects from rendering
         # We store original states to avoid unhiding objects that were already hidden
-        other_objects_render_states: Dict[bpy.types.Object, bool] = {}
+        other_objects_render_states: dict[bpy.types.Object, bool] = {}
         for obj in bpy.data.objects:
             if obj != self.obj:
                 other_objects_render_states[obj] = obj.hide_render
@@ -652,7 +676,7 @@ class Object(ABC):
                 location=offset * camera_loc,
                 fov=fov,
                 resolution=resolution,
-                label=label or f"shoot_{self.obj.name}"
+                label=label or f"shoot_{self.obj.name}",
             )
             cam_tex.build_image()
             return cam_tex
@@ -669,26 +693,28 @@ class Object(ABC):
             self.loc = orig_loc
             self.obj.hide_render = original_hide_render
             self.obj.hide_set(original_hide_viewport)
-            
+
             if not is_linked_originally:
                 try:
                     scene_col.objects.unlink(self.obj)
                 except RuntimeError:
-                    pass # Already unlinked or handled elsewhere
+                    pass  # Already unlinked or handled elsewhere
 
-    def _get_or_create_material_index(self, material: Optional['mat.Layer'], default: bool = False) -> int:
+    def _get_or_create_material_index(
+        self, material: Optional["mat.Layer"], default: bool = False
+    ) -> int:
         """Adds a material to the object and returns its index."""
         if self.obj is None:
             raise RuntimeError("Object is removed")
         if material is None:
             return 0
         bpy_mat = build_material(material)
-        
+
         # Check if this material already exists in the object's slots
         for i, slot in enumerate(self.obj.material_slots):
             if slot.material == bpy_mat:
                 return i
-        
+
         # If not found, add it to a new slot
         if len(self.obj.data.materials) == 0:
             self.obj.data.materials.append(None)
@@ -697,13 +723,13 @@ class Object(ABC):
             return 0
         self.obj.data.materials.append(bpy_mat)
         return len(self.obj.data.materials) - 1
-    
+
     def _alloc_joint_id(self) -> int:
         """Allocates a unique joint id inside this object."""
         self._joint_seq += 1
         return self._joint_seq
 
-    def _register_joint(self, joint: 'Joint'):
+    def _register_joint(self, joint: "Joint"):
         """Registers a joint in both live and id-based registries."""
         self._joints.add(joint)
         self._joints_by_id[joint._joint_id] = joint
@@ -711,7 +737,7 @@ class Object(ABC):
     def _get_joint_by_id(self, joint_id: int):
         """Returns a joint by its stored layer id."""
         return self._joints_by_id.get(joint_id)
-    
+
     def _ensure_tag_attribute(
         self,
         domain: AttributeDomainItems,
@@ -738,7 +764,7 @@ class Object(ABC):
                 if attr is None:
                     attr = data.attributes.new(
                         name=attr_name,
-                        type='STRING',
+                        type="STRING",
                         domain=domain,
                     )
                 if attr is not None:
@@ -783,7 +809,9 @@ class Object(ABC):
 
         for index in indices:
             raw_value = attr.data[index].value
-            value: str = raw_value.decode("utf-8") if isinstance(raw_value, bytes) else raw_value
+            value: str = (
+                raw_value.decode("utf-8") if isinstance(raw_value, bytes) else raw_value
+            )
             if not value:
                 continue
 
@@ -846,27 +874,21 @@ class Object(ABC):
         if not indices:
             return
 
-        tags_to_add = {
-            str(tag).strip()
-            for tag in tags
-            if str(tag).strip()
-        }
+        tags_to_add = {str(tag).strip() for tag in tags if str(tag).strip()}
 
         if not tags_to_add:
             return
-        
+
         attr = self._ensure_tag_attribute(domain)
         if attr is None:
             return
 
         for index in indices:
             raw_value = attr.data[index].value
-            value: str = raw_value.decode("utf-8") if isinstance(raw_value, bytes) else raw_value
-            current_tags = {
-                t
-                for t in value.split(self.TAG_SEPARATOR)
-                if t
-            }
+            value: str = (
+                raw_value.decode("utf-8") if isinstance(raw_value, bytes) else raw_value
+            )
+            current_tags = {t for t in value.split(self.TAG_SEPARATOR) if t}
             current_tags.update(tags_to_add)
 
             attr.data[index].value = self.TAG_SEPARATOR.join(
@@ -891,22 +913,22 @@ class Object(ABC):
         if attr is None:
             return
 
-        tags_to_remove = {
-            str(tag).strip()
-            for tag in tags
-            if str(tag).strip()
-        }
+        tags_to_remove = {str(tag).strip() for tag in tags if str(tag).strip()}
 
         for index in indices:
             raw_value = attr.data[index].value
-            value: str = raw_value.decode("utf-8") if isinstance(raw_value, bytes) else raw_value
+            value: str = (
+                raw_value.decode("utf-8") if isinstance(raw_value, bytes) else raw_value
+            )
             current_tags = [
                 tag
                 for tag in value.split(self.TAG_SEPARATOR)
                 if tag and tag not in tags_to_remove
             ]
 
-            attr.data[index].value = self.TAG_SEPARATOR.join(current_tags).encode("utf-8")
+            attr.data[index].value = self.TAG_SEPARATOR.join(current_tags).encode(
+                "utf-8"
+            )
 
         if hasattr(self.obj.data, "update"):
             self.obj.data.update()
@@ -921,7 +943,9 @@ class Object(ABC):
         if domain is None:
             if isinstance(self.obj.data, bpy.types.Curve):
                 return self.get_tags("CURVE") + self.get_tags("POINT")
-            return self.get_tags("FACE") + self.get_tags("EDGE") + self.get_tags("POINT")
+            return (
+                self.get_tags("FACE") + self.get_tags("EDGE") + self.get_tags("POINT")
+            )
         return self._get_tags(
             domain,
             self._domain_indices(domain),
@@ -995,4 +1019,3 @@ class Object(ABC):
             self._domain_indices(domain),
             tags,
         )
-    

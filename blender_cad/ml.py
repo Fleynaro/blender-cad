@@ -1,48 +1,95 @@
-from collections.abc import Iterable, Iterator
+import inspect
+import math
+import re
+import time
+import types
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import copy
 from dataclasses import dataclass, field, fields, is_dataclass, replace
 from enum import Enum
-import time
-import math
-import re
-import inspect
-import types
-from typing import Any, Callable, ClassVar, Dict, List, Literal, Mapping, Optional, Tuple, TypeAlias, TypedDict, Union
+from typing import (
+    Any,
+    ClassVar,
+    Literal,
+    Optional,
+    TypeAlias,
+    TypedDict,
+    Union,
+)
+
 from typing_extensions import override
 
-from .common import Axis, AbstractCurve, CurveLike, DualMethod, PartLike, VectorLike, _flatten_items, extract_curve, extract_part, tag_to_list
-from .solver import Solver, SolverLike, solver, sm
-from .shape_list import ShapeList
+from .build_part import BuildPart, Mode, add_tags, faces, wires
+from .chain import _chain_joint_axis_name
+from .common import (
+    AbstractCurve,
+    Axis,
+    CurveLike,
+    DualMethod,
+    PartLike,
+    VectorLike,
+    _flatten_items,
+    extract_curve,
+    extract_part,
+    tag_to_list,
+)
+from .curve import BaseCurve, BuildCurve, Curve, FillMode, Polyline, Spline
+from .joint import Joint
+from .location import (
+    FlipX,
+    FlipY,
+    Location,
+    Locations,
+    Origin,
+    Pos,
+    Rot,
+    Scale,
+    SizeAlongAxis,
+    Transform,
+    TransformExpr,
+)
+from .material import mat
+from .modifiers import (
+    ProportionalEdit,
+    add,
+    bend,
+    delete,
+    dissolve,
+    make_box_sides_edit,
+    subdivide,
+    transform,
+)
+from .modifiers import bevel as bevel_modifier
+from .modifiers import extrude as extrude_modifier
 from .object import Object
 from .part import BoxSetPart, Part
-from .curve import BaseCurve, BuildCurve, Curve, FillMode, Polyline, Spline
-from .text import Text, t
-from .joint import Joint
-from .chain import _chain_joint_axis_name
 from .primitives import Box
-from .build_part import BuildPart, Mode, add_tags, faces, wires
-from .location import FlipX, FlipY, Location, Locations, Origin, Pos, Rot, Scale, SizeAlongAxis, Transform, TransformExpr
-from .material import mat
-from .modifiers import ProportionalEdit, add, bend, delete, dissolve, extrude as extrude_modifier, bevel as bevel_modifier, make_box_sides_edit, subdivide, transform
 from .rbl import rl
+from .shape_list import ShapeList
+from .solver import Solver, SolverLike, sm, solver
+from .text import Text, t
 
-StyleFn: TypeAlias = Callable[[], 'Length'] | Callable[['ml'], 'Length']
+StyleFn: TypeAlias = Callable[[], "Length"] | Callable[["ml"], "Length"]
 Length: TypeAlias = int | float | str | StyleFn
-Children: TypeAlias = Union['ml', str, PartLike]
-MlItem: TypeAlias = Union[Children, 'MLStyle', 'rl.Rule', 'rl']
+Children: TypeAlias = Union["ml", str, PartLike]
+MlItem: TypeAlias = Union[Children, "MLStyle", "rl.Rule", "rl"]
 
 
 def _as_float(value: Any, default: float = 0.0) -> float:
     return float(value) if value is not None else default
+
 
 def _percent_to_m(value: str) -> float:
     if not value.endswith("%"):
         raise ValueError(f"value {value!r} is not a percentage")
     return float(value[:-1]) / 100
 
-def _len_to_m(value: Optional[Length], ref: float | None, unit_scale: float) -> float | None:
+
+def _len_to_m(
+    value: Optional[Length], ref: float | None, unit_scale: float
+) -> float | None:
     """Convert a local unit or percentage value to meters."""
     if value is None:
         return None
@@ -61,15 +108,23 @@ def _len_to_m(value: Optional[Length], ref: float | None, unit_scale: float) -> 
     raise TypeError(f"Unsupported length value: {type(value)!r}")
 
 
-def _get_z_epsilon(style: 'MLStyle') -> float:
+def _get_z_epsilon(style: "MLStyle") -> float:
     return max(style.unit_scale * 0.001, 1e-5)
 
-def _fix_subtract_part_size(part: Part, style: 'MLStyle'):
-    epsilon = _get_z_epsilon(style)
-    part.transform *= SizeAlongAxis(Axis.X, part.size.x + epsilon) * SizeAlongAxis(-Axis.X, part.size.x + epsilon * 2) * \
-                        SizeAlongAxis(Axis.Y, part.size.y + epsilon) * SizeAlongAxis(-Axis.Y, part.size.y + epsilon * 2)  
 
-def _box_to_4(value: Any, ref: float | None, unit_scale: float) -> tuple[float, float, float, float]:
+def _fix_subtract_part_size(part: Part, style: "MLStyle"):
+    epsilon = _get_z_epsilon(style)
+    part.transform *= (
+        SizeAlongAxis(Axis.X, part.size.x + epsilon)
+        * SizeAlongAxis(-Axis.X, part.size.x + epsilon * 2)
+        * SizeAlongAxis(Axis.Y, part.size.y + epsilon)
+        * SizeAlongAxis(-Axis.Y, part.size.y + epsilon * 2)
+    )
+
+
+def _box_to_4(
+    value: Any, ref: float | None, unit_scale: float
+) -> tuple[float, float, float, float]:
     """
     CSS-like shorthand:
     - 1 value  -> all sides
@@ -140,10 +195,14 @@ def _points_bbox(points: Iterable[Any], unit_scale: float = 1.0) -> tuple[float,
 
     return max(xs) - min(xs), max(ys) - min(ys)
 
+
 CornerScalar = float
 CornerPair = tuple[float, float]
 
-def _len_to_m_signed(value: Optional[Length], ref: float | None, unit_scale: float) -> float | None:
+
+def _len_to_m_signed(
+    value: Optional[Length], ref: float | None, unit_scale: float
+) -> float | None:
     """Convert a local unit or percentage value to meters, preserving sign."""
     if value is None:
         return None
@@ -161,7 +220,10 @@ def _len_to_m_signed(value: Optional[Length], ref: float | None, unit_scale: flo
 
     raise TypeError(f"Unsupported length value: {type(value)!r}")
 
-def _resolve_corner_radii(style: 'MLStyle', w: float, h: float) -> tuple[Any, Any, Any, Any]:
+
+def _resolve_corner_radii(
+    style: "MLStyle", w: float, h: float
+) -> tuple[Any, Any, Any, Any]:
     """
     Resolve corner radii with CSS-like priority.
 
@@ -196,7 +258,9 @@ def _resolve_corner_radii(style: 'MLStyle', w: float, h: float) -> tuple[Any, An
         br = radius(style.border_radius_br)
 
     # CSS-like normalization, but preserving signs.
-    def _scale_pair(a: tuple[float, float], b: tuple[float, float], limit: float) -> float:
+    def _scale_pair(
+        a: tuple[float, float], b: tuple[float, float], limit: float
+    ) -> float:
         s = abs(a[0]) + abs(b[0])
         if s > limit and s > 1e-9:
             return limit / s
@@ -217,6 +281,7 @@ def _resolve_corner_radii(style: 'MLStyle', w: float, h: float) -> tuple[Any, An
         (bl[0] * sx, bl[1] * sy),
     )
 
+
 def _rounded_rect_points_4(
     w: float,
     h: float,
@@ -233,11 +298,7 @@ def _rounded_rect_points_4(
 
     def add_point(px: float, py: float) -> None:
         pt = (px, py)
-        if (
-            not pts
-            or abs(pts[-1][0] - pt[0]) > 1e-9
-            or abs(pts[-1][1] - pt[1]) > 1e-9
-        ):
+        if not pts or abs(pts[-1][0] - pt[0]) > 1e-9 or abs(pts[-1][1] - pt[1]) > 1e-9:
             pts.append(pt)
 
     def add_arc(
@@ -354,6 +415,7 @@ def _rounded_rect_points_4(
 
     return pts
 
+
 def _warp_side_scales_points(
     points: Iterable[tuple[float, float]],
     w: float,
@@ -407,14 +469,10 @@ def _warp_side_scales_points(
 
         warped.append((wx, wy))
 
-        if wx < min_x:
-            min_x = wx
-        if wx > max_x:
-            max_x = wx
-        if wy < min_y:
-            min_y = wy
-        if wy > max_y:
-            max_y = wy
+        min_x = min(min_x, wx)
+        max_x = max(max_x, wx)
+        min_y = min(min_y, wy)
+        max_y = max(max_y, wy)
 
     # Step 2: Linearly scale points back to touch [0, w] x [0, h] boundaries exactly
     range_x = max_x - min_x
@@ -432,7 +490,10 @@ def _warp_side_scales_points(
 
     return final_points
 
-def _curve_to_outer_points(curve: 'Curve', width: Optional[float] = None, height: Optional[float] = None):
+
+def _curve_to_outer_points(
+    curve: "Curve", width: Optional[float] = None, height: Optional[float] = None
+):
     pts = curve.points
     assert len(pts) > 0
     outer_pts = [(px, py) for px, py, *_rest in pts[0]]
@@ -445,7 +506,7 @@ def _curve_to_outer_points(curve: 'Curve', width: Optional[float] = None, height
 
     src_w = max(max_x - min_x, 1e-9)
     src_h = max(max_y - min_y, 1e-9)
-    
+
     outer_pts = [
         (
             (x - min_x) / src_w * (width if width is not None else src_w),
@@ -455,14 +516,20 @@ def _curve_to_outer_points(curve: 'Curve', width: Optional[float] = None, height
     ]
     return outer_pts, src_w, src_h
 
-def _pairwise_closed(points: list[tuple[float, float]]) -> Iterator[tuple[tuple[float, float], tuple[float, float]]]:
+
+def _pairwise_closed(
+    points: list[tuple[float, float]],
+) -> Iterator[tuple[tuple[float, float], tuple[float, float]]]:
     """Iterate over consecutive pairs in a closed polyline."""
     if len(points) < 2:
         return
     for i in range(len(points)):
         yield points[i], points[(i + 1) % len(points)]
 
-def _clean_closed_loop(points: list[tuple[float, float]], eps: float = 1e-9) -> list[tuple[float, float]]:
+
+def _clean_closed_loop(
+    points: list[tuple[float, float]], eps: float = 1e-9
+) -> list[tuple[float, float]]:
     """Remove duplicates and collapse obvious degenerate points."""
     if len(points) < 2:
         return points[:]
@@ -472,13 +539,18 @@ def _clean_closed_loop(points: list[tuple[float, float]], eps: float = 1e-9) -> 
         if not out or math.hypot(p[0] - out[-1][0], p[1] - out[-1][1]) > eps:
             out.append(p)
 
-    if len(out) >= 2 and math.hypot(out[0][0] - out[-1][0], out[0][1] - out[-1][1]) <= eps:
+    if (
+        len(out) >= 2
+        and math.hypot(out[0][0] - out[-1][0], out[0][1] - out[-1][1]) <= eps
+    ):
         out.pop()
 
     return out
 
 
-def _simplify_collinear_closed(points: list[tuple[float, float]], eps: float = 1e-9) -> list[tuple[float, float]]:
+def _simplify_collinear_closed(
+    points: list[tuple[float, float]], eps: float = 1e-9
+) -> list[tuple[float, float]]:
     """
     Remove vertices that lie on a straight continuation.
     This is what saves polygons on long straight borders.
@@ -518,7 +590,9 @@ def _simplify_collinear_closed(points: list[tuple[float, float]], eps: float = 1
     return pts
 
 
-def _closed_loop_segments(points: list[tuple[float, float]]) -> tuple[list[tuple[tuple[float, float], tuple[float, float], float]], float]:
+def _closed_loop_segments(
+    points: list[tuple[float, float]],
+) -> tuple[list[tuple[tuple[float, float], tuple[float, float], float]], float]:
     segs = []
     total = 0.0
     for p0, p1 in _pairwise_closed(points):
@@ -611,10 +685,12 @@ def _offset_closed_polyline(
         ml = math.hypot(mx, my)
 
         if ml <= 1e-9:
-            out.append((
-                p_curr[0] + n0x * offset,
-                p_curr[1] + n0y * offset,
-            ))
+            out.append(
+                (
+                    p_curr[0] + n0x * offset,
+                    p_curr[1] + n0y * offset,
+                )
+            )
             continue
 
         mx /= ml
@@ -625,10 +701,12 @@ def _offset_closed_polyline(
 
         scale = min(scale, miter_limit)
 
-        out.append((
-            p_curr[0] + mx * offset * scale,
-            p_curr[1] + my * offset * scale,
-        ))
+        out.append(
+            (
+                p_curr[0] + mx * offset * scale,
+                p_curr[1] + my * offset * scale,
+            )
+        )
 
     # FORCE SEAM CONTINUITY
     # align last point EXACTLY to first
@@ -681,10 +759,7 @@ def _part_outline_loops_xy(part: Part) -> list[list[tuple[float, float]]]:
         if len(pts) < 3:
             continue
         pts = _rotate_loop_to_canonical_start(pts)
-        if (
-            abs(pts[0][0] - pts[-1][0]) < 1e-9
-            and abs(pts[0][1] - pts[-1][1]) < 1e-9
-        ):
+        if abs(pts[0][0] - pts[-1][0]) < 1e-9 and abs(pts[0][1] - pts[-1][1]) < 1e-9:
             pts = pts[:-1]
 
         if len(pts) >= 3:
@@ -693,10 +768,10 @@ def _part_outline_loops_xy(part: Part) -> list[list[tuple[float, float]]]:
 
 
 def _set_box_model(
-    parent_box: Optional['MLBox'],
-    style: 'MLStyle',
+    parent_box: Optional["MLBox"],
+    style: "MLStyle",
 ) -> tuple[tuple[float, float, float, float], tuple[float, float, float, float]]:
-    
+
     ref_w = parent_box.w if parent_box else None
     ref_h = parent_box.h if parent_box else None
     unit_scale = style.unit_scale
@@ -779,8 +854,9 @@ def _set_box_model(
         margin_left,
     )
 
+
 def _resolve_flow_alignment_offset_y(
-    style: 'MLStyle',
+    style: "MLStyle",
     box_h: float,
     content_h: float,
 ) -> tuple[float, float]:
@@ -793,7 +869,10 @@ def _resolve_flow_alignment_offset_y(
         return box_h - content_h
     return 0.0
 
-def _resolve_relative_offset(style: 'MLStyle', parent_box: Optional['MLBox']) -> tuple[float, float]:
+
+def _resolve_relative_offset(
+    style: "MLStyle", parent_box: Optional["MLBox"]
+) -> tuple[float, float]:
     """
     CSS-like relative offset:
     left  -> +X
@@ -808,11 +887,16 @@ def _resolve_relative_offset(style: 'MLStyle', parent_box: Optional['MLBox']) ->
     ref_h = parent_box.h if parent_box else None
     unit_scale = style.unit_scale
 
-    dx = (_len_to_m(style.left, ref_w, unit_scale) or 0.0) - (_len_to_m(style.right, ref_w, unit_scale) or 0.0)
-    dy = (_len_to_m(style.top, ref_h, unit_scale) or 0.0) - (_len_to_m(style.bottom, ref_h, unit_scale) or 0.0)
+    dx = (_len_to_m(style.left, ref_w, unit_scale) or 0.0) - (
+        _len_to_m(style.right, ref_w, unit_scale) or 0.0
+    )
+    dy = (_len_to_m(style.top, ref_h, unit_scale) or 0.0) - (
+        _len_to_m(style.bottom, ref_h, unit_scale) or 0.0
+    )
     return dx, dy
 
-def _has_inline_box_style(style: 'MLStyle') -> bool:
+
+def _has_inline_box_style(style: "MLStyle") -> bool:
     """
     Returns True if the node must be treated as an atomic inline box
     instead of a transparent text wrapper.
@@ -830,7 +914,8 @@ def _has_inline_box_style(style: 'MLStyle') -> bool:
 
     return False
 
-def _is_transparent_inline_wrapper(node: "ml", style: 'MLStyle') -> bool:
+
+def _is_transparent_inline_wrapper(node: "ml", style: "MLStyle") -> bool:
     """
     A transparent wrapper does not create its own visible/boxy inline object.
     Its children are merged directly into the parent flow.
@@ -840,7 +925,7 @@ def _is_transparent_inline_wrapper(node: "ml", style: 'MLStyle') -> bool:
     return not _has_inline_box_style(style)
 
 
-def _effective_wrap_mode(style: 'MLStyle') -> str:
+def _effective_wrap_mode(style: "MLStyle") -> str:
     """Resolve the effective wrapping mode."""
     if style.white_space in {"nowrap"}:
         return "none"
@@ -881,8 +966,7 @@ def _iter_text_tokens(text: str, wrap_mode: str) -> Iterator[str]:
         return
 
     # word mode
-    for token in re.findall(r"\n|[^\S\n]+|[^\s]+", text):
-        yield token
+    yield from re.findall(r"\n|[^\S\n]+|[^\s]+", text)
 
 
 def _text_stroke_offsets(
@@ -905,7 +989,10 @@ def _text_stroke_offsets(
         for i in range(samples)
     ]
 
-def _make_text_object(text: str, style: 'MLStyle', layer: mat.Layer | None, extrude_amount: float) -> Text:
+
+def _make_text_object(
+    text: str, style: "MLStyle", layer: mat.Layer | None, extrude_amount: float
+) -> Text:
     """Build a configured Text object."""
     unit_scale = _as_float(style.unit_scale, _as_float(root_style.unit_scale, 1.0))
     font_size = _as_float(style.font_size, _as_float(root_style.font_size, 12.0))
@@ -918,7 +1005,7 @@ def _make_text_object(text: str, style: 'MLStyle', layer: mat.Layer | None, extr
             italic=style.font_style == "italic",
         ),
         size=font_size * unit_scale,
-        loc=Pos(Z=-extrude_amount)
+        loc=Pos(Z=-extrude_amount),
     )
     obj.spacing_character = 1.0 + _as_float(style.letter_spacing, 0.0)
     obj.spacing_word = 1.0 + _as_float(style.word_spacing, 0.0)
@@ -952,17 +1039,19 @@ def _distribute_free_space(free: float, count: int, mode: str) -> tuple[float, f
             return 0.0, 0.0
 
 
-def _resolve_boolean_mode(style: Optional['MLStyle']) -> Mode:
+def _resolve_boolean_mode(style: Optional["MLStyle"]) -> Mode:
     if style is not None and style.mode == "add":
         return Mode.ADD
     return Mode.JOIN
 
 
-def _is_extrude_mode(style: Optional['MLStyle']) -> bool:
+def _is_extrude_mode(style: Optional["MLStyle"]) -> bool:
     return style is not None and style.mode == "extrude"
+
 
 def is_percent(v):
     return isinstance(v, str) and v.strip().endswith("%")
+
 
 def _freeze_for_hash(value: Any) -> Any:
     if value is None or isinstance(value, (bool, int, float, str, bytes)):
@@ -994,8 +1083,7 @@ def _freeze_for_hash(value: Any) -> Any:
             "dict",
             tuple(
                 sorted(
-                    (_freeze_for_hash(k), _freeze_for_hash(v))
-                    for k, v in value.items()
+                    (_freeze_for_hash(k), _freeze_for_hash(v)) for k, v in value.items()
                 )
             ),
         )
@@ -1008,17 +1096,18 @@ def _freeze_for_hash(value: Any) -> Any:
         return ("set", tuple(sorted(_freeze_for_hash(v) for v in value)))
     return (value.__class__.__qualname__, repr(value))
 
-def _style_hash(style: 'MLStyle') -> tuple[Any, ...]:
+
+def _style_hash(style: "MLStyle") -> tuple[Any, ...]:
     return tuple(
         (f.name, _freeze_for_hash(getattr(style, f.name)))
         for f in fields(MLStyle)
         if f.name in _RENDER_STYLE_FIELDS
     )
 
+
 def _attrs_hash(attrs: dict[str, Any]) -> tuple[Any, ...]:
-    return tuple(
-        sorted((k, _freeze_for_hash(v)) for k, v in attrs.items())
-    )
+    return tuple(sorted((k, _freeze_for_hash(v)) for k, v in attrs.items()))
+
 
 def _hash_callable(fn: Callable[..., Any]) -> tuple[Any, ...]:
     bound_self = None
@@ -1039,23 +1128,24 @@ def _hash_callable(fn: Callable[..., Any]) -> tuple[Any, ...]:
         code.co_names if code else None,
         getattr(fn, "__defaults__", None),
         getattr(fn, "__kwdefaults__", None),
-        tuple(
-            _freeze_for_hash(cell.cell_contents)
-            for cell in closure
-        ),
+        tuple(_freeze_for_hash(cell.cell_contents) for cell in closure),
     )
 
 
 @dataclass
 class StyleResolveContext:
-    node: 'ml'
+    node: "ml"
     field: str
     index: int = 0
 
-_style_resolve_ctx: ContextVar[Optional[StyleResolveContext]] = ContextVar('_style_resolve_ctx', default=None)
+
+_style_resolve_ctx: ContextVar[Optional[StyleResolveContext]] = ContextVar(
+    "_style_resolve_ctx", default=None
+)
+
 
 @contextmanager
-def style_resolve_context(node: 'ml', field_name: str):
+def style_resolve_context(node: "ml", field_name: str):
     """Context manager setting active node and style field during property evaluation."""
     new_context = StyleResolveContext(node=node, field=field_name)
     token = _style_resolve_ctx.set(new_context)
@@ -1064,7 +1154,11 @@ def style_resolve_context(node: 'ml', field_name: str):
     finally:
         _style_resolve_ctx.reset(token)
 
-_dof_ctx: ContextVar[Optional[Dict[Tuple[int, str, int], float]]] = ContextVar('_dof_ctx', default=None)
+
+_dof_ctx: ContextVar[Optional[dict[tuple[int, str, int], float]]] = ContextVar(
+    "_dof_ctx", default=None
+)
+
 
 @contextmanager
 def dof_context():
@@ -1078,10 +1172,12 @@ def dof_context():
 
 BuildCallbackType: TypeAlias = Callable[[BuildPart], Any] | Callable[[], Any]
 
+
 def points_to_curve(points: list[tuple[float, float]]) -> Curve:
     with BuildCurve() as bc:
         Polyline(*[(p[0], p[1], 0.0) for p in points])
         return bc.curve
+
 
 class RlRuntimeContext(rl.RuntimeContext):
     def __init__(self):
@@ -1093,41 +1189,49 @@ class RlRuntimeContext(rl.RuntimeContext):
         if isinstance(target.part, ml) and target.part.is_building:
             return target.part.eval_box.transform
         return super().get_global_transform(target)
-    
+
     @override
-    def get_part_data(self, target: rl, target_shell_selector: Optional[str] = None) -> rl.PartData:
+    def get_part_data(
+        self, target: rl, target_shell_selector: Optional[str] = None
+    ) -> rl.PartData:
         if isinstance(target.part, ml) and target.part.is_building:
             eval_box = target.part.eval_box
             shell_type = target_shell_selector or self._get_default_shell_type(target)
-            key = (target.part, f"{shell_type}_{self._calc_eval_box_hash(eval_box, shell_type)}")
+            key = (
+                target.part,
+                f"{shell_type}_{self._calc_eval_box_hash(eval_box, shell_type)}",
+            )
 
             if key not in self.part_data:
-                if shell_type == 'box':
+                if shell_type == "box":
                     part_like = eval_box.part
-                elif shell_type == 'curve':
+                elif shell_type == "curve":
                     part_like = points_to_curve(eval_box.custom_data.curve_points)
                 else:
                     raise RuntimeError(f"Unknown shell type: {shell_type}")
-                self.part_data[key] = rl.PartData(
-                    part_like=part_like
-                )
+                self.part_data[key] = rl.PartData(part_like=part_like)
             return self.part_data[key]
         return super().get_part_data(target)
 
     def _get_default_shell_type(self, target: rl) -> str:
         rule = self._current_rule
-        if isinstance(rule, rl.CollisionRule) \
-            and rule.mode == rl.CollisionRule.Mode.INSIDE \
-            and rule.target is target:
-            return 'curve'
-        return 'box'
-    
-    def _calc_eval_box_hash(self, box: BoxSetPart.Box['EvaluationNodeData'], shell_type: str) -> int:
-        if shell_type == 'box':
+        if (
+            isinstance(rule, rl.CollisionRule)
+            and rule.mode == rl.CollisionRule.Mode.INSIDE
+            and rule.target is target
+        ):
+            return "curve"
+        return "box"
+
+    def _calc_eval_box_hash(
+        self, box: BoxSetPart.Box["EvaluationNodeData"], shell_type: str
+    ) -> int:
+        if shell_type == "box":
             return hash((box.size.x, box.size.y, box.size.z))
-        if shell_type == 'curve':
+        if shell_type == "curve":
             return hash(tuple(tuple(p) for p in box.custom_data.curve_points))
         raise RuntimeError(f"Unknown shell type: {shell_type}")
+
 
 @dataclass
 class MLBox:
@@ -1135,6 +1239,7 @@ class MLBox:
     y: float = 0.0
     w: float = 0.0
     h: float = 0.0
+
 
 @dataclass
 class NodeGeneratorState:
@@ -1144,22 +1249,25 @@ class NodeGeneratorState:
     n: int = 4
     done: bool = False
     initialized: bool = False
-    cache: dict[int, Union['ml', list['ml'], None]] = field(default_factory=dict)
+    cache: dict[int, Union["ml", list["ml"], None]] = field(default_factory=dict)
+
 
 @dataclass(frozen=True)
 class BuildCallback:
     fn: BuildCallbackType
     pure: bool = False
     name: Optional[str] = None
-    
+
     @property
     def hash(self) -> int:
         return hash(_hash_callable(self.fn), self.name)
+
 
 @dataclass(slots=True)
 class MLCacheEntry:
     part: Part
     subtract_parts: list[Part] = field(default_factory=list)
+
 
 @dataclass(slots=True)
 class MLBuildInfo:
@@ -1176,19 +1284,22 @@ class MLBuildInfo:
     generated_children: list["ml"] = field(default_factory=list)
     generator_state: Optional[NodeGeneratorState] = None
 
+
 @dataclass(slots=True)
 class MLBuildContext:
     part_cache: dict[int, MLCacheEntry] = field(default_factory=dict)
     node_data: dict["ml", MLBuildInfo] = field(default_factory=dict)
     evaluate: bool = False
     eval_transform: Optional[Transform] = None
-    rl_nodes: List["rl"] = field(default_factory=list)
+    rl_nodes: list["rl"] = field(default_factory=list)
     root_bp: Optional[BuildPart] = None
+
 
 _ml_build_ctx: ContextVar[Optional[MLBuildContext]] = ContextVar(
     "_ml_build_ctx",
     default=None,
 )
+
 
 @contextmanager
 def ml_build_context(ctx: MLBuildContext):
@@ -1199,17 +1310,20 @@ def ml_build_context(ctx: MLBuildContext):
     finally:
         _ml_build_ctx.reset(token)
 
+
 @dataclass(slots=True)
 class EvaluationNodeData:
-    node: 'ml'
+    node: "ml"
     curve_points: list[tuple[float, float]] = field(default_factory=list)
     offset: Location = field(default_factory=Location)
 
+
 MaterialLayer = mat.Layer
+
 
 @dataclass
 class BorderNode:
-    node: 'ml'
+    node: "ml"
     side: Optional[Literal["left", "right", "top", "bottom"]] = None
     selector: Optional[Callable[[], AbstractCurve]] = None
     subtract_parts_passthrough: bool = True
@@ -1217,12 +1331,13 @@ class BorderNode:
     layout_objective: Callable = field(default_factory=lambda: None)
     evaluate: bool = False
 
+
 @dataclass
 class MLStyle:
     # Name
     name: Optional[str] = None
-    tag: Optional[str | Iterable[str]] = None # inherited by children
-    root_tag: Optional[str | Iterable[str]] = None # NOT inherited by children
+    tag: Optional[str | Iterable[str]] = None  # inherited by children
+    root_tag: Optional[str | Iterable[str]] = None  # NOT inherited by children
 
     # Size and units.
     unit_scale: Optional[float] = None
@@ -1279,9 +1394,7 @@ class MLStyle:
     bend_segments: int = 0
     subtract: bool = False
     background_cuts: Optional[int] = None
-    background_on_build: list[BuildCallback] = field(
-        default_factory=list
-    )
+    background_on_build: list[BuildCallback] = field(default_factory=list)
     background_from_curve: Optional[CurveLike] = None
 
     # Display / flex.
@@ -1291,9 +1404,20 @@ class MLStyle:
     flex_wrap: Literal["nowrap", "wrap"] = "nowrap"
     flex_grow: float = 0.0
     flex_shrink: float = 1.0
-    justify_content: Literal["flex-start", "flex-end", "center", "space-between", "space-around", "space-evenly"] = "flex-start"
-    align_items: Literal["flex-start", "flex-end", "center", "baseline", "stretch"] = "stretch"
-    align_content: Literal["flex-start", "flex-end", "center", "space-between", "space-around", "stretch"] = "stretch"
+    justify_content: Literal[
+        "flex-start",
+        "flex-end",
+        "center",
+        "space-between",
+        "space-around",
+        "space-evenly",
+    ] = "flex-start"
+    align_items: Literal["flex-start", "flex-end", "center", "baseline", "stretch"] = (
+        "stretch"
+    )
+    align_content: Literal[
+        "flex-start", "flex-end", "center", "space-between", "space-around", "stretch"
+    ] = "stretch"
     gap: Optional[Length] = 0
 
     # Box model.
@@ -1370,7 +1494,7 @@ class MLStyle:
 
     def __post_init__(self):
         self._attached = False
-        if 'ml' in globals() and ml._ctx_stack:
+        if "ml" in globals() and ml._ctx_stack:
             ml._ctx_stack[-1]._pending_styles.append(self)
 
     def __add__(self, other: "MLStyle") -> "MLStyle":
@@ -1383,32 +1507,35 @@ class MLStyle:
                 if f.name in ("tag", "root_tag"):
                     v1 = tag_to_list(v1)
                     v2 = tag_to_list(v2)
-                changes[f.name] = v1 + v2 if isinstance(v1, list) and isinstance(v2, list) else v2
+                changes[f.name] = (
+                    v1 + v2 if isinstance(v1, list) and isinstance(v2, list) else v2
+                )
         combined = replace(self, **changes)
         return combined
-    
+
     @staticmethod
-    def abs_size(width: Optional[float] = None, height: Optional[float] = None) -> "MLStyle":
+    def abs_size(
+        width: Optional[float] = None, height: Optional[float] = None
+    ) -> "MLStyle":
         """Sets width and height in absolute units."""
         return MLStyle(
             width=(lambda n: width / n.unit_scale) if width is not None else None,
-            height=(lambda n: height / n.unit_scale) if height is not None else None
+            height=(lambda n: height / n.unit_scale) if height is not None else None,
         )
-    
+
     @staticmethod
     def circle(radius: Length, mat: Optional[MaterialLayer] = None) -> "MLStyle":
         """
-        Creates a circular shape. 
+        Creates a circular shape.
         Sets width and height to 2x radius and applies full border radius.
         """
-        def diameter(node: 'ml'):
+
+        def diameter(node: "ml"):
             r = node.resolve_value(radius, "circle_radius")
             return r * 2 if isinstance(r, (int, float)) else r
+
         return MLStyle(
-            width=diameter,
-            height=diameter,
-            border_radius="50%",
-            background_mat=mat
+            width=diameter, height=diameter, border_radius="50%", background_mat=mat
         )
 
     @staticmethod
@@ -1427,11 +1554,13 @@ class MLStyle:
             left="50%",
             anchor_x=0.5,
             anchor_y=0.5,
-            z_index=z_index
+            z_index=z_index,
         )
 
     @staticmethod
-    def flex_center(direction: Literal["row", "column"] = "row", gap: Length = 0) -> "MLStyle":
+    def flex_center(
+        direction: Literal["row", "column"] = "row", gap: Length = 0
+    ) -> "MLStyle":
         """
         Quick setup for a centered flex container.
         Aligns children to the center on both axes.
@@ -1441,18 +1570,15 @@ class MLStyle:
             flex_direction=direction,
             justify_content="center",
             align_items="center",
-            gap=gap
+            gap=gap,
         )
-    
+
     @staticmethod
     def align_center() -> "MLStyle":
         """
         Aligns children to the center on both axes.
         """
-        return MLStyle(
-            align="center",
-            align_y="center"
-        )
+        return MLStyle(align="center", align_y="center")
 
     @staticmethod
     def full_size() -> "MLStyle":
@@ -1467,13 +1593,7 @@ class MLStyle:
     @staticmethod
     def overlay() -> "MLStyle":
         """Typical absolute overlay covering the entire parent area."""
-        return MLStyle(
-            position="absolute",
-            top=0,
-            left=0,
-            width=100,
-            height=100
-        )
+        return MLStyle(position="absolute", top=0, left=0, width=100, height=100)
 
     @staticmethod
     def column(gap: Length = 0) -> "MLStyle":
@@ -1484,21 +1604,34 @@ class MLStyle:
     def row(gap: Length = 0) -> "MLStyle":
         """Shortcut for a horizontal flex layout."""
         return MLStyle(display="flex", flex_direction="row", gap=gap)
-    
+
     @staticmethod
-    def prop_box_extrude(left = 1.0, right = 1.0, top = 1.0, bottom = 1.0, multiply: bool = False) -> "MLStyle":
+    def prop_box_extrude(
+        left=1.0, right=1.0, top=1.0, bottom=1.0, multiply: bool = False
+    ) -> "MLStyle":
         return MLStyle(
             extrude_prop_edit=make_box_sides_edit(left, right, top, bottom, multiply)
         )
-    
+
     @staticmethod
-    def prop_box_border_extrude(left = 1.0, right = 1.0, top = 1.0, bottom = 1.0, multiply: bool = False) -> "MLStyle":
+    def prop_box_border_extrude(
+        left=1.0, right=1.0, top=1.0, bottom=1.0, multiply: bool = False
+    ) -> "MLStyle":
         return MLStyle(
-            border_extrude_prop_edit=make_box_sides_edit(left, right, top, bottom, multiply)
+            border_extrude_prop_edit=make_box_sides_edit(
+                left, right, top, bottom, multiply
+            )
         )
-    
+
     @staticmethod
-    def extrude_delete_face(top = False, bottom = False, side_left = False, side_right = False, side_top = False, side_bottom = False) -> "MLStyle":
+    def extrude_delete_face(
+        top=False,
+        bottom=False,
+        side_left=False,
+        side_right=False,
+        side_top=False,
+        side_bottom=False,
+    ) -> "MLStyle":
         sides: list[tuple[bool, Callable[[ShapeList], ShapeList]]] = [
             (top, lambda s: s.bottom()),
             (bottom, lambda s: s.top()),
@@ -1508,11 +1641,17 @@ class MLStyle:
             (side_bottom, lambda s: s.max_y()),
         ]
         return MLStyle(
-            background_on_build=[BuildCallback(lambda bp, s=side: delete(s(bp.faces())), pure=True) for val, side in sides if val]
+            background_on_build=[
+                BuildCallback(lambda bp, s=side: delete(s(bp.faces())), pure=True)
+                for val, side in sides
+                if val
+            ]
         )
-    
+
     @staticmethod
-    def bevel_box_top(all=0.0, left=0.0, right=0.0, top=0.0, bottom=0.0, lr=0.0, tb=0.0, segments=10) -> "MLStyle":
+    def bevel_box_top(
+        all=0.0, left=0.0, right=0.0, top=0.0, bottom=0.0, lr=0.0, tb=0.0, segments=10
+    ) -> "MLStyle":
         sides: list[tuple[float, Callable[[ShapeList], ShapeList]]] = [
             (all, lambda s: s),
             (left, lambda s: s.min_x()),
@@ -1525,7 +1664,9 @@ class MLStyle:
         return MLStyle(
             bevel=[
                 (
-                    lambda neg, s=side: s(faces().top().edges() if neg else faces().bottom().edges()),
+                    lambda neg, s=side: s(
+                        faces().top().edges() if neg else faces().bottom().edges()
+                    ),
                     val,
                     segments,
                 )
@@ -1541,8 +1682,8 @@ class MLStyle:
         selector: Optional[Callable[[], AbstractCurve]] = None,
         subtract_parts_passthrough: bool = True,
         layout_solver: SolverLike = Solver(),
-        layout_objective: Callable = lambda : 0,
-        evaluate: bool = False
+        layout_objective: Callable = lambda: 0,
+        evaluate: bool = False,
     ) -> "MLStyle":
         return MLStyle(
             border_nodes=[
@@ -1553,20 +1694,25 @@ class MLStyle:
                     subtract_parts_passthrough,
                     layout_solver=layout_solver,
                     layout_objective=layout_objective,
-                    evaluate=evaluate
+                    evaluate=evaluate,
                 )
             ]
         )
-    
+
     @staticmethod
-    def border_extrude_loc(X: float = 0.0, Y: float = 0.0, Z: float = 0.0, transform: TransformExpr = Transform()) -> "MLStyle":
+    def border_extrude_loc(
+        X: float = 0.0,
+        Y: float = 0.0,
+        Z: float = 0.0,
+        transform: TransformExpr = Transform(),
+    ) -> "MLStyle":
         return MLStyle(
             x_offset="-50%",
             y_offset="-50%",
             left=X,
             transform=Rot(X=90) * Pos(Y=Y, Z=-Z) * transform,
         )
-    
+
     @classmethod
     def dof_abs_pos(
         cls,
@@ -1602,7 +1748,7 @@ class MLStyle:
             left=ml.dof_p(min=min_x, max=max_x, steps=steps_x, step=step_x),
             top=ml.dof_p(min=min_y, max=max_y, steps=steps_y, step=step_y),
         )
-    
+
     @classmethod
     def dof_size(
         cls,
@@ -1619,7 +1765,7 @@ class MLStyle:
             width=ml.dof(min=min_w, max=max_w, steps=steps_w, step=step_w),
             height=ml.dof(min=min_h, max=max_h, steps=steps_h, step=step_h),
         )
-    
+
     @classmethod
     def dof_size_p(
         cls,
@@ -1692,7 +1838,6 @@ _RENDER_STYLE_FIELDS = {
     "max_width",
     "max_height",
     "aspect_ratio",
-
     # Shape
     "padding",
     "padding_tb",
@@ -1701,7 +1846,6 @@ _RENDER_STYLE_FIELDS = {
     "padding_right",
     "padding_bottom",
     "padding_left",
-
     "border_width",
     "border_offset",
     "border_style",
@@ -1718,14 +1862,12 @@ _RENDER_STYLE_FIELDS = {
     "border_radius_br",
     "border_radius_segments",
     "border_around_background",
-
     # Materials
     "mat",
     "background_mat",
     "background_opacity",
     "opacity",
     "border_mat",
-
     # Text
     "font_size",
     "font_family",
@@ -1737,41 +1879,33 @@ _RENDER_STYLE_FIELDS = {
     "white_space",
     "wrap_mode",
     "word_spacing",
-
     "text_stroke_width",
     "text_stroke_mat",
     "text_stroke_opacity",
     "text_stroke_extrude",
     "text_stroke_samples",
-
     # 3D
     "extrude",
     "extrude_transform",
     "extrude_delete_source_faces",
     "extrude_prop_edit",
-
     "text_extrude",
     "text_extrude_delete_source_faces",
-
     "border_extrude",
     "border_extrude_transform",
     "border_extrude_delete_source_faces",
     "border_extrude_prop_edit",
     "border_objects",
-
     "mode",
     "dissolve",
     "bevel",
     "bend_angle",
     "bend_direction",
     "bend_segments",
-
     "background_cuts",
-
     # Rendering behaviour
     "overflow",
     "display",
-
     # Warp
     "top_scale",
     "right_scale",
@@ -1790,6 +1924,7 @@ root_style = MLStyle(
     line_height=1.2,
     letter_spacing=0.0,
 )
+
 
 @dataclass
 class _FlowFragment:
@@ -1865,12 +2000,14 @@ class _FlexItem:
         if is_row:
             return self.cross_size + self.margin_top + self.margin_bottom
         return self.cross_size + self.margin_left + self.margin_right
-    
+
+
 @dataclass
 class _FlexLine:
     items: list[_FlexItem]
     main_size: float = 0.0
     cross_size: float = 0.0
+
 
 class MLExtraParams(TypedDict, total=False):
     kind: str
@@ -1911,24 +2048,43 @@ class ml:
 
         ml._ctx_stack.pop()
 
-    def __init__(self, *args: MlItem, on_build: Optional[BuildCallback | BuildCallbackType] = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: MlItem,
+        on_build: Optional[BuildCallback | BuildCallbackType] = None,
+        **kwargs: Any,
+    ) -> None:
         """
-        Initializes an ml node. 
-        
-        Positional arguments can be a mix of MLStyle objects and children. 
+        Initializes an ml node.
+
+        Positional arguments can be a mix of MLStyle objects and children.
         MLStyle objects are merged from left to right.
         """
         ml_items = list(_flatten_items(args))
 
         attrs = kwargs
-        self.kind: Literal["block", "inline", "generator", "new_line", "text", "img", "curve", "line", "circle", "part", "joint"] = attrs.pop("kind", "block")
-        self.style = sum([item for item in ml_items if isinstance(item, MLStyle)], MLStyle())
+        self.kind: Literal[
+            "block",
+            "inline",
+            "generator",
+            "new_line",
+            "text",
+            "img",
+            "curve",
+            "line",
+            "circle",
+            "part",
+            "joint",
+        ] = attrs.pop("kind", "block")
+        self.style = sum(
+            [item for item in ml_items if isinstance(item, MLStyle)], MLStyle()
+        )
         self.style._attached = True
         self.attrs: dict[str, Any] = attrs
-        
+
         self.parent: Optional[ml] = None
         self.children: list[ml] = [
-            self._normalize_child(item) 
+            self._normalize_child(item)
             for item in ml_items
             if not isinstance(item, (MLStyle, rl.Rule, rl))
         ]
@@ -1958,12 +2114,12 @@ class ml:
         if ctx is None:
             raise RuntimeError("ML build context is not active")
         return ctx
-    
+
     @property
     def _build_info(self) -> MLBuildInfo:
         """Return build-time state for this node from the active context."""
         return self._build_ctx.node_data.setdefault(self, MLBuildInfo())
-    
+
     @property
     def is_building(self) -> bool:
         return self in self._build_ctx.node_data
@@ -1981,7 +2137,7 @@ class ml:
         info = self._build_info
         assert info.eval_box is not None, "Eval box is not set"
         return info.eval_box
-    
+
     @eval_box.setter
     def eval_box(self, value: BoxSetPart.Box["EvaluationNodeData"]) -> None:
         self._build_info.eval_box = value
@@ -1997,7 +2153,9 @@ class ml:
         self._build_info.resolved_style = value
 
     @property
-    def _text_measure_cache(self) -> dict[tuple[Any, ...], tuple[float, float, float, float]]:
+    def _text_measure_cache(
+        self,
+    ) -> dict[tuple[Any, ...], tuple[float, float, float, float]]:
         return self._build_info.text_measure_cache
 
     @property
@@ -2035,53 +2193,63 @@ class ml:
     @property
     def _generated_children(self) -> list["ml"]:
         return self._build_info.generated_children
-    
+
     @_generated_children.setter
     def _generated_children(self, value: list["ml"]) -> None:
         self._build_info.generated_children = value
 
     @property
     def unit_scale(self) -> float:
-        return (self._build_info.resolved_style and self._build_info.resolved_style.unit_scale) or (self.parent and self.parent.unit_scale) or 1
+        return (
+            (
+                self._build_info.resolved_style
+                and self._build_info.resolved_style.unit_scale
+            )
+            or (self.parent and self.parent.unit_scale)
+            or 1
+        )
 
     @property
     def width(self) -> float:
         return self.box.w / self.unit_scale
-    
+
     @property
     def height(self) -> float:
         return self.box.h / self.unit_scale
-    
+
     @property
     def x(self) -> float:
         return self.box.x / self.unit_scale
-    
+
     @property
     def y(self) -> float:
         return self.box.y / self.unit_scale
-    
+
     @property
     def part(self):
         return self.build(mode=Mode.PRIVATE)
-    
+
     def to_part(self, width: Optional[float] = None, height: Optional[float] = None):
         return self.build(mode=Mode.PRIVATE, width=width, height=height)
-    
+
     def to_rl_node(self):
         """Builds a RuleBasedLayout from this ml node."""
-        global_rl: List[rl] = []
+        global_rl: list[rl] = []
+
         def walk(node: ml) -> rl:
             group = rl.group(
                 [walk(child) for child in node._iter_children_expanded()],
                 part=node,
-                tag=tag_to_list(node._resolved_style.tag) + tag_to_list(node._resolved_style.root_tag)
+                tag=tag_to_list(node._resolved_style.tag)
+                + tag_to_list(node._resolved_style.root_tag),
             )
             if node.rl_rules:
                 group = group | node.rl_rules
             global_rl.extend(node.rl_elements)
             return group
+
         return rl.group(walk(self), global_rl)
-    
+
     @staticmethod
     def _normalize_child(child: Children):
         if isinstance(child, ml):
@@ -2102,7 +2270,12 @@ class ml:
 
     @classmethod
     def stack(cls, *children: MlItem, **kwargs: Any) -> "ml":
-        return cls(MLStyle(display="flex", flex_direction="column"), *children, kind="block", **kwargs)
+        return cls(
+            MLStyle(display="flex", flex_direction="column"),
+            *children,
+            kind="block",
+            **kwargs,
+        )
 
     @classmethod
     def img(cls, src: str, **kwargs: Any) -> "ml":
@@ -2118,22 +2291,17 @@ class ml:
 
     @classmethod
     def circle(cls, radius: float = 1.0, segments: int = 24, **kwargs: Any) -> "ml":
-        return cls(
-            kind="circle",
-            radius=radius,
-            segments=segments,
-            **kwargs
-        )
+        return cls(kind="circle", radius=radius, segments=segments, **kwargs)
 
     @classmethod
-    def from_part(cls, part: PartLike, style = MLStyle(), **kwargs: Any) -> "ml":
+    def from_part(cls, part: PartLike, style=MLStyle(), **kwargs: Any) -> "ml":
         return cls(
             style,
             kind="part",
             part=extract_part(part, to_loc=Rot(X=180), ensure_copy=True),
-            **kwargs
+            **kwargs,
         )
-    
+
     @classmethod
     def joint(
         cls,
@@ -2142,8 +2310,8 @@ class ml:
         Y: Optional[Length] = None,
         Z: Optional[float] = None,
         flip: bool = False,
-        style = MLStyle(),
-        **kwargs: Any
+        style=MLStyle(),
+        **kwargs: Any,
     ) -> "ml":
         return cls(
             MLStyle(
@@ -2153,34 +2321,39 @@ class ml:
                 left=X,
                 top=Y,
                 z_offset=Z,
-                transform=Rot(X=180) if flip else None
-            ) + style,
+                transform=Rot(X=180) if flip else None,
+            )
+            + style,
             kind="joint",
             name=name,
-            **kwargs
+            **kwargs,
         )
 
     @classmethod
     def new_line(cls, **kwargs: Any) -> "ml":
         return cls(kind="new_line", **kwargs)
-    
-    GenerateResult: TypeAlias = Union['ml', list['ml'], None]
-    
+
+    GenerateResult: TypeAlias = Union["ml", list["ml"], None]
+
     @classmethod
     def generate(
         cls,
-        factory: Optional[Callable[['ml'], GenerateResult]],
+        factory: Optional[Callable[["ml"], GenerateResult]],
         **kwargs: Any,
     ) -> "ml":
         return cls(kind="generator", generator=factory, **kwargs)
-    
+
     @classmethod
     def generate_array(
         cls,
-        factory: Optional[Callable[[int, 'ml'], GenerateResult] | Callable[[int], GenerateResult] | Callable[[], GenerateResult]],
-        fill_mode: Literal['box', 'line'] = "box",
+        factory: Optional[
+            Callable[[int, "ml"], GenerateResult]
+            | Callable[[int], GenerateResult]
+            | Callable[[], GenerateResult]
+        ],
+        fill_mode: Literal["box", "line"] = "box",
         start: int = 4,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> "ml":
         # Layout passes probe the count first by growth and then by bisection.
         # Retaining factory results by index makes that convergence deterministic
@@ -2193,9 +2366,9 @@ class ml:
             parent = node.parent
             overflow = False
             if parent:
-                if fill_mode == 'box':
+                if fill_mode == "box":
                     overflow = parent._layout_overflow
-                elif fill_mode == 'line':
+                elif fill_mode == "line":
                     overflow = len(parent._flow_lines) > 1
 
             # First pass: measure exactly `start` items.
@@ -2218,9 +2391,7 @@ class ml:
                         state.done = True
                         state.n = state.lo
                         state.cache = {
-                            k: v
-                            for k, v in state.cache.items()
-                            if k < state.n
+                            k: v for k, v in state.cache.items() if k < state.n
                         }
                     else:
                         state.n = max(1, (state.lo + state.hi) // 2)
@@ -2243,15 +2414,15 @@ class ml:
             return out
 
         return cls.generate(wrapped, **kwargs)
-    
+
     @classmethod
     def array(
         cls,
         node: Callable[[int], "ml"],
         side: Literal["left", "right", "top", "bottom"] = "right",
         count: int = 1,
-        style = MLStyle(),
-        **kwargs: Any
+        style=MLStyle(),
+        **kwargs: Any,
     ) -> "ml":
         """
         Generates a sequence of nodes by calling the lambda with an index.
@@ -2266,7 +2437,7 @@ class ml:
             if side in ("top", "bottom") and idx < count - 1:
                 children.append(cls.new_line())
         return ml(*children, style, **kwargs)
-    
+
     @classmethod
     def mirror(
         cls,
@@ -2274,27 +2445,27 @@ class ml:
         side: Literal["left", "right", "top", "bottom"] = "right",
         flip: bool = True,
         offset=0.0,
-        style = MLStyle(),
-        **kwargs: Any
+        style=MLStyle(),
+        **kwargs: Any,
     ) -> "ml":
         """Creates a mirror."""
+
         def mirror_factory(i: int) -> "ml":
             instance = node()
-            if i == 0:
-                if offset:
-                    setattr(instance.style, f"margin_{side}", (getattr(instance.style, f"margin_{side}") or 0.0) + offset)
-            if i == 1:
-                if flip:
-                    instance.style.transform = (instance.style.transform or Transform()) * (FlipX if side in ("left", "right") else FlipY)
+            if i == 0 and offset:
+                setattr(
+                    instance.style,
+                    f"margin_{side}",
+                    (getattr(instance.style, f"margin_{side}") or 0.0) + offset,
+                )
+            if i == 1 and flip:
+                instance.style.transform = (instance.style.transform or Transform()) * (
+                    FlipX if side in ("left", "right") else FlipY
+                )
             return instance
-        return cls.array(
-            node=mirror_factory,
-            side=side,
-            count=2,
-            style=style,
-            **kwargs
-        )
-    
+
+        return cls.array(node=mirror_factory, side=side, count=2, style=style, **kwargs)
+
     @classmethod
     def hole(
         cls,
@@ -2304,7 +2475,7 @@ class ml:
         depth: float = 1.0,
         mat: Optional[mat.Layer] = None,
         cuts: int = 0,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> "ml":
         return cls(
             MLStyle(
@@ -2312,14 +2483,14 @@ class ml:
                 height=height,
                 extrude=-depth,
                 background_mat=mat,
-                background_cuts=cuts
+                background_cuts=cuts,
             ),
             MLStyle.extrude_delete_face(bottom=True),
             *children,
             kind="block",
-            **kwargs
+            **kwargs,
         )
-    
+
     @classmethod
     def dof_get(
         cls,
@@ -2335,16 +2506,18 @@ class ml:
         cache = _dof_ctx.get()
         if cache is None:
             return init_value
-        
+
         ctx = _style_resolve_ctx.get()
         assert ctx is not None, "dof called outside of style resolve context"
 
         cache_key = (id(ctx.node), ctx.field, ctx.index)
         ctx.index += 1
         if cache_key not in cache:
-            cache[cache_key] = solver().param(init_value, min=min, max=max, steps=steps, step=step)
+            cache[cache_key] = solver().param(
+                init_value, min=min, max=max, steps=steps, step=step
+            )
         return cache[cache_key]
-    
+
     @classmethod
     def dof(
         cls,
@@ -2355,7 +2528,7 @@ class ml:
     ):
         """Registers a Solver parameter."""
         return lambda: cls.dof_get(min=min, max=max, steps=steps, step=step)
-    
+
     @classmethod
     def dof_p(
         cls,
@@ -2365,29 +2538,39 @@ class ml:
         step: Optional[float] = None,
     ):
         """Registers a Solver percentage parameter."""
-        return lambda: f"{cls.dof_get(min=_percent_to_m(min), max=_percent_to_m(max), steps=steps, step=step) * 100}%"
-    
+        return lambda: (
+            f"{cls.dof_get(min=_percent_to_m(min), max=_percent_to_m(max), steps=steps, step=step) * 100}%"
+        )
+
     def _on_build_instance(self, *args, pure: bool = False):
         if args and callable(args[0]):
             fn = args[0]
             self._on_build_callbacks.append(BuildCallback(fn=fn, pure=False))
             return fn
+
         def decorator(fn: BuildCallbackType):
             self._on_build_callbacks.append(BuildCallback(fn=fn, pure=pure))
             return fn
+
         return decorator
-    
+
     @classmethod
     def _on_build_class(cls, *args, pure: bool = False, name: Optional[str] = None):
         if not cls._ctx_stack:
             raise RuntimeError("ml.on_build used outside of with ml()")
         if args and callable(args[0]):
             fn = args[0]
-            cls._ctx_stack[-1]._on_build_callbacks.append(BuildCallback(fn=fn, pure=False))
+            cls._ctx_stack[-1]._on_build_callbacks.append(
+                BuildCallback(fn=fn, pure=False)
+            )
             return fn
+
         def decorator(fn: BuildCallbackType):
-            cls._ctx_stack[-1]._on_build_callbacks.append(BuildCallback(fn=fn, pure=pure, name=name))
+            cls._ctx_stack[-1]._on_build_callbacks.append(
+                BuildCallback(fn=fn, pure=pure, name=name)
+            )
             return fn
+
         return decorator
 
     on_build = DualMethod(
@@ -2400,16 +2583,18 @@ class ml:
         part.transform = (style.transform or Transform()) * part.transform
         if style.adapt_transform:
             part.transform *= Rot(X=90) * Scale(style.unit_scale)
+
         def restore():
             part.transform = old_transform
+
         return restore
-    
+
     def _refresh_generator_children(self) -> None:
         """Rebuild generator children in the active build context."""
         if self.kind != "generator":
             return
 
-        factory: Callable[['ml'], ml.GenerateResult] = self.attrs.get("generator")
+        factory: Callable[["ml"], ml.GenerateResult] = self.attrs.get("generator")
         produced = [factory(self)]
 
         for ch in self._generated_children:
@@ -2427,7 +2612,7 @@ class ml:
 
         self._generated_children = new_children
 
-    def _iter_children_expanded(self) -> Iterable['ml']:
+    def _iter_children_expanded(self) -> Iterable["ml"]:
         """
         Expand generator nodes inline.
         Generator children inherit styles from the generator node.
@@ -2437,13 +2622,15 @@ class ml:
                 yield from child._generated_children
             else:
                 yield child
-    
+
     def _compute_cache_hash(self) -> int | None:
         style = self._resolved_style
-        for cb in self._on_build_callbacks + (style.background_on_build if style is not None else []):
+        for cb in self._on_build_callbacks + (
+            style.background_on_build if style is not None else []
+        ):
             if not cb.pure:
                 return None
-        
+
         child_hashes = []
         for child in self._iter_children_expanded():
             child_hash = child._compute_cache_hash()
@@ -2451,17 +2638,19 @@ class ml:
                 return None
             child_hashes.append(child_hash)
 
-        self._cache_hash = hash((
-            self.kind,
-            _style_hash(style) if style is not None else None,
-            _attrs_hash(self.attrs),
+        self._cache_hash = hash(
             (
-                round(self.box.w, 6),
-                round(self.box.h, 6),
-            ),
-            tuple(cb.hash for cb in self._on_build_callbacks),
-            tuple(child_hashes),
-        ))
+                self.kind,
+                _style_hash(style) if style is not None else None,
+                _attrs_hash(self.attrs),
+                (
+                    round(self.box.w, 6),
+                    round(self.box.h, 6),
+                ),
+                tuple(cb.hash for cb in self._on_build_callbacks),
+                tuple(child_hashes),
+            )
+        )
         return self._cache_hash
 
     def resolve_value(self, value: Any, field_name: str = "") -> Any:
@@ -2487,7 +2676,7 @@ class ml:
             raw = getattr(style, name)
             raw = self.resolve_value(raw, name)
             setattr(style, name, raw)
-            
+
         # 2) Then apply inheritance.
         if parent_style is not None:
             for name in _INHERITED_FIELDS:
@@ -2496,14 +2685,22 @@ class ml:
                 if getattr(style, name) is None:
                     setattr(style, name, getattr(parent_style, name))
 
-            style.opacity = _as_float(parent_style.opacity, 1.0) * _as_float(style.opacity, 1.0)
-            style.background_opacity = _as_float(style.background_opacity, 1.0) * style.opacity
+            style.opacity = _as_float(parent_style.opacity, 1.0) * _as_float(
+                style.opacity, 1.0
+            )
+            style.background_opacity = (
+                _as_float(style.background_opacity, 1.0) * style.opacity
+            )
             style.mat = _combine_mat(parent_style.mat, style.mat)
             style.tag = tag_to_list(parent_style.tag) + tag_to_list(style.tag)
 
         # 3) Resolve "background from curve".
         if style.background_from_curve is not None:
-            if self._resolved_style and getattr(self._resolved_style, "_background_from_curve_orig", None) == style.background_from_curve:
+            if (
+                self._resolved_style
+                and getattr(self._resolved_style, "_background_from_curve_orig", None)
+                == style.background_from_curve
+            ):
                 curve = self._resolved_style.background_from_curve
             else:
                 curve = extract_curve(style.background_from_curve)
@@ -2530,7 +2727,7 @@ class ml:
         parent_box = self.parent and self.parent.box
         if style.display == "none" or self.kind == "generator":
             return []
-        
+
         rel_dx, rel_dy = _resolve_relative_offset(style, parent_box)
 
         if self.kind == "new_line":
@@ -2566,9 +2763,7 @@ class ml:
         if _is_transparent_inline_wrapper(self, style):
             out: list[_FlowFragment] = []
             for child in self._iter_children_expanded():
-                out.extend(
-                    child._collect_flow_fragments()
-                )
+                out.extend(child._collect_flow_fragments())
             return out
 
         # Atomic inline container: measure it as its own box.
@@ -2626,13 +2821,16 @@ class ml:
                 if (
                     width_limited
                     and current.items
-                    and current.width + max(0.0, frag.outer_w + frag.relative_x) > max_w + 1e-9
+                    and current.width + max(0.0, frag.outer_w + frag.relative_x)
+                    > max_w + 1e-9
                 ):
                     flush()
                 push_item(frag)
                 continue
 
-            text = _normalize_text_source(frag.text, frag.style.white_space if frag.style else style.white_space)
+            text = _normalize_text_source(
+                frag.text, frag.style.white_space if frag.style else style.white_space
+            )
             seg_style = frag.style or style
 
             for token in _iter_text_tokens(text, wrap_mode):
@@ -2640,7 +2838,9 @@ class ml:
                     flush()
                     continue
 
-                token_w, token_h, token_line_h, token_y_offset = self._measure_text_plain(token, seg_style)
+                token_w, token_h, token_line_h, token_y_offset = (
+                    self._measure_text_plain(token, seg_style)
+                )
 
                 # Skip leading spaces in normal word-flow.
                 if (
@@ -2654,7 +2854,11 @@ class ml:
                 if width_limited and wrap_mode != "none":
                     if current.items and current.width + token_w > max_w:
                         # If it is just a wrapping space, drop it.
-                        if token.isspace() and wrap_mode == "word" and seg_style.white_space in {"normal", "nowrap"}:
+                        if (
+                            token.isspace()
+                            and wrap_mode == "word"
+                            and seg_style.white_space in {"normal", "nowrap"}
+                        ):
                             flush()
                             continue
                         flush()
@@ -2666,8 +2870,14 @@ class ml:
                         and wrap_mode in {"word", "character", "anywhere"}
                     ):
                         for ch in token:
-                            ch_w, ch_h, ch_line_h, ch_y_offset = self._measure_text_plain(ch, seg_style)
-                            if width_limited and current.items and current.width + ch_w > max_w:
+                            ch_w, ch_h, ch_line_h, ch_y_offset = (
+                                self._measure_text_plain(ch, seg_style)
+                            )
+                            if (
+                                width_limited
+                                and current.items
+                                and current.width + ch_w > max_w
+                            ):
                                 flush()
                             push_item(
                                 _FlowFragment(
@@ -2677,7 +2887,7 @@ class ml:
                                     w=ch_w,
                                     h=ch_h,
                                     line_h=ch_line_h,
-                                    y_offset=ch_y_offset
+                                    y_offset=ch_y_offset,
                                 )
                             )
                         continue
@@ -2690,7 +2900,7 @@ class ml:
                         w=token_w,
                         h=token_h,
                         line_h=token_line_h,
-                        y_offset=token_y_offset
+                        y_offset=token_y_offset,
                     )
                 )
 
@@ -2699,12 +2909,20 @@ class ml:
 
         return lines
 
-    def _measure_flow_lines(self, lines: list[_FlowLine], fallback_style: MLStyle) -> tuple[float, float]:
+    def _measure_flow_lines(
+        self, lines: list[_FlowLine], fallback_style: MLStyle
+    ) -> tuple[float, float]:
         """Measure the final content box of the flow layout."""
         if not lines:
-            unit_scale = _as_float(fallback_style.unit_scale, _as_float(root_style.unit_scale, 1.0))
-            font_size = _as_float(fallback_style.font_size, _as_float(root_style.font_size, 12.0))
-            line_height = _as_float(fallback_style.line_height, _as_float(root_style.line_height, 1.2))
+            unit_scale = _as_float(
+                fallback_style.unit_scale, _as_float(root_style.unit_scale, 1.0)
+            )
+            font_size = _as_float(
+                fallback_style.font_size, _as_float(root_style.font_size, 12.0)
+            )
+            line_height = _as_float(
+                fallback_style.line_height, _as_float(root_style.line_height, 1.2)
+            )
             return 0.0, font_size * unit_scale * line_height
 
         max_line_w = 0.0
@@ -2715,22 +2933,34 @@ class ml:
             if line.height > 0.0:
                 total_h += line.height
             else:
-                unit_scale = _as_float(fallback_style.unit_scale, _as_float(root_style.unit_scale, 1.0))
-                font_size = _as_float(fallback_style.font_size, _as_float(root_style.font_size, 12.0))
-                line_height = _as_float(fallback_style.line_height, _as_float(root_style.line_height, 1.2))
+                unit_scale = _as_float(
+                    fallback_style.unit_scale, _as_float(root_style.unit_scale, 1.0)
+                )
+                font_size = _as_float(
+                    fallback_style.font_size, _as_float(root_style.font_size, 12.0)
+                )
+                line_height = _as_float(
+                    fallback_style.line_height, _as_float(root_style.line_height, 1.2)
+                )
                 total_h += font_size * unit_scale * line_height
 
         return max_line_w, total_h
 
-    def _measure_text_plain(self, text: str, style: MLStyle) -> tuple[float, float, float, float]:
+    def _measure_text_plain(
+        self, text: str, style: MLStyle
+    ) -> tuple[float, float, float, float]:
         """
-        Calculates the advance width and line height of a text string within the Blender 
-        environment using a differential measurement technique to account for 
+        Calculates the advance width and line height of a text string within the Blender
+        environment using a differential measurement technique to account for
         font side bearings.
         """
         size = _as_float(style.font_size, _as_float(root_style.font_size, 12.0))
         unit_scale = _as_float(style.unit_scale, _as_float(root_style.unit_scale, 1.0))
-        line_h = size * unit_scale * _as_float(style.line_height, _as_float(root_style.line_height, 1.2))
+        line_h = (
+            size
+            * unit_scale
+            * _as_float(style.line_height, _as_float(root_style.line_height, 1.2))
+        )
         stroke_w = _len_to_m(style.text_stroke_width, None, unit_scale) or 0.0
 
         key = (
@@ -2743,13 +2973,13 @@ class ml:
             _as_float(style.word_spacing, 0.0),
             stroke_w,
         )
-        
+
         cached = self._text_measure_cache.get(key)
         if cached is not None:
             return cached
 
         marker = "."
-        
+
         def create_probe(content: str):
             p = Text(
                 text=t(
@@ -2830,8 +3060,17 @@ class ml:
         parent_h = parent_box.h if parent_box else None
 
         border_w = _len_to_m(style.border_width, parent_w, unit_scale) or 0.0
-        border_offset = _len_to_m(style.border_offset, parent_box.w if parent_box else None, style.unit_scale) or 0.0
-        measure_border = max(border_w + border_offset, 0.0) if style.border_in_measure else 0.0
+        border_offset = (
+            _len_to_m(
+                style.border_offset,
+                parent_box.w if parent_box else None,
+                style.unit_scale,
+            )
+            or 0.0
+        )
+        measure_border = (
+            max(border_w + border_offset, 0.0) if style.border_in_measure else 0.0
+        )
         gap = _len_to_m(style.gap, parent_w, unit_scale) or 0.0
 
         w = _len_to_m(style.width, parent_w, unit_scale)
@@ -2860,24 +3099,17 @@ class ml:
             else (natural_h if is_flex_item or parent_h is None else parent_h)
         )
 
-        inner_w = max(
-            0.0,
-            available_w
-            - padding_left
-            - padding_right
-        )
+        inner_w = max(0.0, available_w - padding_left - padding_right)
 
-        inner_h = max(
-            0.0,
-            available_h
-            - padding_top
-            - padding_bottom
-        )
+        inner_h = max(0.0, available_h - padding_top - padding_bottom)
 
         self.box = MLBox(0.0, 0.0, inner_w, inner_h)
 
         # Generic inline flow: text + atomic inline items in one normal flow.
-        if self.kind not in {"text", "img", "curve", "line", "circle", "part"} and style.display != "none":
+        if (
+            self.kind not in {"text", "img", "curve", "line", "circle", "part"}
+            and style.display != "none"
+        ):
             if style.display == "flex":
                 is_row = style.flex_direction == "row"
                 main_limit = inner_w if is_row else inner_h
@@ -2890,14 +3122,13 @@ class ml:
                     ref = parent_w if is_row else parent_h
                     min_len = c_style.min_width if is_row else c_style.min_height
                     return max(0.0, _len_to_m(min_len, ref, unit_scale) or 0.0)
-                
+
                 def _main_advance(item: _FlexItem) -> float:
                     return max(0.0, item.outer_main(is_row) + item.rel_main)
-                
+
                 def _recalc_line_main_size(line: _FlexLine) -> float:
-                    return (
-                        sum(_main_advance(item) for item in line.items)
-                        + gap * max(0, len(line.items) - 1)
+                    return sum(_main_advance(item) for item in line.items) + gap * max(
+                        0, len(line.items) - 1
                     )
 
                 # 1) Collect items into lines.
@@ -2936,7 +3167,11 @@ class ml:
                         projected_main += gap
                     projected_main += advance
 
-                    if style.flex_wrap == "wrap" and current.items and projected_main > main_limit:
+                    if (
+                        style.flex_wrap == "wrap"
+                        and current.items
+                        and projected_main > main_limit
+                    ):
                         lines.append(current)
                         current = _FlexLine(items=[])
 
@@ -2972,13 +3207,15 @@ class ml:
                         if free_shrink <= 1e-9:
                             continue
 
-                        shrinkables.append({
-                            "item": item,
-                            "shrink": shrink,
-                            "basis": max(item.main_size, 1e-9),
-                            "min_main": min_main,
-                            "free_shrink": free_shrink,
-                        })
+                        shrinkables.append(
+                            {
+                                "item": item,
+                                "shrink": shrink,
+                                "basis": max(item.main_size, 1e-9),
+                                "min_main": min_main,
+                                "free_shrink": free_shrink,
+                            }
+                        )
 
                     remaining = overflow
                     while remaining > 1e-9 and shrinkables:
@@ -3007,13 +3244,17 @@ class ml:
                             else:
                                 consumed += share
                                 item.main_size = new_main
-                                next_round.append({
-                                    "item": item,
-                                    "shrink": shrink,
-                                    "basis": max(item.main_size, 1e-9),
-                                    "min_main": min_main,
-                                    "free_shrink": max(0.0, item.main_size - min_main),
-                                })
+                                next_round.append(
+                                    {
+                                        "item": item,
+                                        "shrink": shrink,
+                                        "basis": max(item.main_size, 1e-9),
+                                        "min_main": min_main,
+                                        "free_shrink": max(
+                                            0.0, item.main_size - min_main
+                                        ),
+                                    }
+                                )
 
                         if consumed <= 1e-9:
                             break
@@ -3049,15 +3290,25 @@ class ml:
 
                         line.main_size = _recalc_line_main_size(line)
 
-                total_cross = sum(line.cross_size for line in lines) + gap * max(0, len(lines) - 1)
+                total_cross = sum(line.cross_size for line in lines) + gap * max(
+                    0, len(lines) - 1
+                )
 
                 if w is None:
-                    w = (inner_w + padding_left + padding_right) if is_row else (
-                        max((line.main_size for line in lines), default=0.0) + padding_left + padding_right
+                    w = (
+                        (inner_w + padding_left + padding_right)
+                        if is_row
+                        else (
+                            max((line.main_size for line in lines), default=0.0)
+                            + padding_left
+                            + padding_right
+                        )
                     )
                 if h is None:
-                    h = (total_cross + padding_top + padding_bottom) if is_row else (
-                        inner_h + padding_top + padding_bottom
+                    h = (
+                        (total_cross + padding_top + padding_bottom)
+                        if is_row
+                        else (inner_h + padding_top + padding_bottom)
                     )
 
                 # 3) Layout pass.
@@ -3065,7 +3316,7 @@ class ml:
 
                 cross_cursor = 0.0
                 free_cross = cross_limit - total_cross
-                
+
                 self._layout_overflow = free_cross < -1e-9
 
                 if use_align_content:
@@ -3109,17 +3360,23 @@ class ml:
                         if style.align_items == "stretch":
                             if is_row:
                                 if c_style.height is None:
-                                    child_h = max(0.0, line_cross_extent - cm[0] - cm[2])
+                                    child_h = max(
+                                        0.0, line_cross_extent - cm[0] - cm[2]
+                                    )
                             else:
                                 if c_style.width is None:
-                                    child_w = max(0.0, line_cross_extent - cm[3] - cm[1])
+                                    child_w = max(
+                                        0.0, line_cross_extent - cm[3] - cm[1]
+                                    )
 
                         child.box.w = child_w
                         child.box.h = child_h
 
                         if is_row:
                             if style.align_items == "center":
-                                child_y = cross_cursor + (line_cross_extent - child_h) / 2
+                                child_y = (
+                                    cross_cursor + (line_cross_extent - child_h) / 2
+                                )
                             elif style.align_items == "flex-end":
                                 child_y = cross_cursor + (line_cross_extent - child_h)
                             else:
@@ -3128,14 +3385,13 @@ class ml:
                             child.box.x = main_cursor + cm[3]
                             child.box.y = child_y + cm[0]
 
-                            advance = max(
-                                0.0,
-                                child_w + cm[1] + cm[3] + item.rel_main
-                            )
+                            advance = max(0.0, child_w + cm[1] + cm[3] + item.rel_main)
                             main_cursor += advance + gap + main_gap
                         else:
                             if style.align_items == "center":
-                                child_x = cross_cursor + (line_cross_extent - child_w) / 2
+                                child_x = (
+                                    cross_cursor + (line_cross_extent - child_w) / 2
+                                )
                             elif style.align_items == "flex-end":
                                 child_x = cross_cursor + (line_cross_extent - child_w)
                             else:
@@ -3144,10 +3400,7 @@ class ml:
                             child.box.x = child_x + cm[3]
                             child.box.y = main_cursor + cm[0]
 
-                            advance = max(
-                                0.0,
-                                child_h + cm[0] + cm[2] + item.rel_main
-                            )
+                            advance = max(0.0, child_h + cm[0] + cm[2] + item.rel_main)
                             main_cursor += advance + gap + main_gap
 
                         child.box.x += item.rel_main
@@ -3175,9 +3428,13 @@ class ml:
                 # Inline boxes must have stable line-box height.
                 if content_h <= 0:
                     content_h = (
-                        _as_float(style.font_size, _as_float(root_style.font_size, 12.0))
+                        _as_float(
+                            style.font_size, _as_float(root_style.font_size, 12.0)
+                        )
                         * style.unit_scale
-                        * _as_float(style.line_height, _as_float(root_style.line_height, 1.2))
+                        * _as_float(
+                            style.line_height, _as_float(root_style.line_height, 1.2)
+                        )
                     )
 
                 if w is None:
@@ -3227,25 +3484,31 @@ class ml:
 
         self.box = MLBox(0.0, 0.0, w, h)
         return self.box
-    
+
     def _snapshot_layout(self) -> tuple:
         out: list[tuple[int, float, float, float, float]] = []
 
         def walk(node: "ml") -> None:
-            out.append(hash((
-                _style_hash(node._resolved_style) if node._resolved_style is not None else None,
-                _attrs_hash(self.attrs),
-                round(node.box.x, 6),
-                round(node.box.y, 6),
-                round(node.box.w, 6),
-                round(node.box.h, 6),
-            )))
+            out.append(
+                hash(
+                    (
+                        _style_hash(node._resolved_style)
+                        if node._resolved_style is not None
+                        else None,
+                        _attrs_hash(self.attrs),
+                        round(node.box.x, 6),
+                        round(node.box.y, 6),
+                        round(node.box.w, 6),
+                        round(node.box.h, 6),
+                    )
+                )
+            )
             for child in node._iter_children_expanded():
                 walk(child)
 
         walk(self)
         return tuple(out)
-    
+
     def _prepare_layout(self, parent_style: MLStyle | None = None) -> None:
         """Prepare generator children and resolve all styles for this layout pass."""
         style = self._resolve_style(parent_style)
@@ -3274,7 +3537,7 @@ class ml:
             self._prepare_layout()
             self._measure_node()
             cur = self._snapshot_layout()
-            
+
             if cur == prev:
                 return
 
@@ -3284,7 +3547,7 @@ class ml:
             "Dynamic layout did not stabilize. "
             "Most likely you created a cyclic dependency between sizes."
         )
-    
+
     def _layout(
         self,
         solver: SolverLike,
@@ -3322,7 +3585,7 @@ class ml:
         z_offset: float,
         content_w: float,
         lines: list[_FlowLine],
-        subtract_parts: list[Part]
+        subtract_parts: list[Part],
     ) -> None:
         """
         Emit mixed text + inline atomic fragments.
@@ -3340,11 +3603,12 @@ class ml:
                 pen_x = (content_w - line_w) / 2.0
                 justify_extra = 0.0
             elif align == "right":
-                pen_x = (content_w - line_w)
+                pen_x = content_w - line_w
                 justify_extra = 0.0
             elif align == "justify" and line_index != is_last:
                 space_count = sum(
-                    1 for item in line.items
+                    1
+                    for item in line.items
                     if item.kind == "text" and item.text.isspace()
                 )
                 if space_count > 0:
@@ -3361,12 +3625,7 @@ class ml:
                 pen_x += item.relative_x
                 if item.kind == "text":
                     with Locations(Pos(X=pen_x, Y=pen_y + item.relative_y)):
-                        self._emit_text_run(
-                            item.text,
-                            item,
-                            z_offset,
-                            subtract_parts
-                        )
+                        self._emit_text_run(item.text, item, z_offset, subtract_parts)
 
                     if justify_extra and item.text.isspace():
                         pen_x += justify_extra
@@ -3383,7 +3642,7 @@ class ml:
                         child._emit_node(
                             MLBox(0.0, 0.0, content_w, line_h),
                             z_offset,
-                            child_subtract_parts
+                            child_subtract_parts,
                         )
                         subtract_parts.extend(child_subtract_parts)
                 pen_x += item.outer_w
@@ -3395,7 +3654,7 @@ class ml:
         text: str,
         frag: _FlowFragment,
         z_offset: float,
-        subtract_parts: list[Part]
+        subtract_parts: list[Part],
     ) -> None:
         """
         Emit one text run with optional stroke and fill.
@@ -3407,20 +3666,19 @@ class ml:
         z_epsilon = _get_z_epsilon(style)
         z_step = 0.0 if mode == Mode.ADD else z_epsilon
 
-        fill_extrude = (
-            _as_float(style.text_extrude, 0.0)
-            * 0.5
-            * style.unit_scale
-        )
+        fill_extrude = _as_float(style.text_extrude, 0.0) * 0.5 * style.unit_scale
 
-        stroke_extrude = min(fill_extrude, (
-            _as_float(
-                style.text_stroke_extrude,
-                _as_float(style.text_extrude, 0.0),
-            )
-            * 0.5
-            * style.unit_scale
-        ))
+        stroke_extrude = min(
+            fill_extrude,
+            (
+                _as_float(
+                    style.text_stroke_extrude,
+                    _as_float(style.text_extrude, 0.0),
+                )
+                * 0.5
+                * style.unit_scale
+            ),
+        )
 
         if fill_extrude < 0.0:
             z_offset = 0.0
@@ -3441,7 +3699,9 @@ class ml:
             )
 
         # Stroke material.
-        stroke_width_m = _len_to_m(style.text_stroke_width, None, style.unit_scale) or 0.0
+        stroke_width_m = (
+            _len_to_m(style.text_stroke_width, None, style.unit_scale) or 0.0
+        )
         stroke_layer = style.text_stroke_mat or style.mat or parent_style.mat
         has_stroke = stroke_width_m > 1e-9 and stroke_layer is not None
 
@@ -3458,13 +3718,16 @@ class ml:
             box_d = max(z_max - z_min, 1e-6)
 
             center_offset = Pos(
-                X=box_w / 2.0,
-                Y=box_h / 2.0 + frag.y_offset,
-                Z=-(z_min + z_max) / 2.0
+                X=box_w / 2.0, Y=box_h / 2.0 + frag.y_offset, Z=-(z_min + z_max) / 2.0
             )
 
             with Locations(center_offset):
-                Box(box_w, box_h, box_d, custom_data=EvaluationNodeData(node=self, offset=center_offset))
+                Box(
+                    box_w,
+                    box_h,
+                    box_d,
+                    custom_data=EvaluationNodeData(node=self, offset=center_offset),
+                )
             return
 
         if has_stroke:
@@ -3472,7 +3735,9 @@ class ml:
                 stroke_layer,
                 style.text_stroke_opacity
                 if style.text_stroke_opacity is not None
-                else (style.opacity if style.opacity is not None else parent_style.opacity),
+                else (
+                    style.opacity if style.opacity is not None else parent_style.opacity
+                ),
             )
 
             stroke_obj = _make_text_object(text, style, stroke_layer, stroke_extrude)
@@ -3501,7 +3766,9 @@ class ml:
                 cutout_obj.fill_mode = FillMode.BOTH
                 cutout_obj.extrude(abs(fill_extrude) * 10)
                 cutout_obj_part = cutout_obj.part
-                cutout_obj_part.loc = BuildPart._get_context()._location_context[0] * cutout_obj_part.loc
+                cutout_obj_part.loc = (
+                    BuildPart._get_context()._location_context[0] * cutout_obj_part.loc
+                )
                 _fix_subtract_part_size(cutout_obj_part, style)
                 subtract_parts.append(cutout_obj_part)
             add(fill_obj_part, mode=mode)
@@ -3522,7 +3789,7 @@ class ml:
         extrude_delete_source: bool = True,
         extrude_prop_edit: Optional[ProportionalEdit] = None,
         bevel: list[tuple[Callable[[bool], ShapeList], float, int]] = [],
-        cuts: int = 0
+        cuts: int = 0,
     ):
         """Build a 2D face using Polyline only."""
         if len(pts) < 3:
@@ -3543,7 +3810,7 @@ class ml:
                 extrude_modifier(
                     op=Pos(Z=-extrude) * (extrude_transform or Transform()),
                     prop_edit=extrude_prop_edit,
-                    delete_source=extrude_delete_source
+                    delete_source=extrude_delete_source,
                 )
             for entities, radius, segments in bevel:
                 bevel_modifier(entities(extrude < 0.0), radius, segments)
@@ -3566,7 +3833,7 @@ class ml:
         offset: float,
         mode: Mode = Mode.PRIVATE,
         extrude_transform: Optional[TransformExpr] = None,
-        extrude_delete_source = True,
+        extrude_delete_source=True,
         extrude_prop_edit: Optional[ProportionalEdit] = None,
     ) -> None:
         outline = _simplify_collinear_closed(outline)
@@ -3589,7 +3856,7 @@ class ml:
             pts2=outer,
             extrude_transform=extrude_transform,
             extrude_delete_source=extrude_delete_source,
-            extrude_prop_edit=extrude_prop_edit
+            extrude_prop_edit=extrude_prop_edit,
         )
 
     def _emit_clip_part(
@@ -3597,7 +3864,7 @@ class ml:
         outline: list[tuple[float, float]],
         offset: float,
         mode: Mode = Mode.PRIVATE,
-        depth = 100.0,
+        depth=100.0,
     ) -> None:
         outer = _offset_closed_polyline(outline, -offset)
         return self._emit_polyline_face(
@@ -3610,7 +3877,7 @@ class ml:
             mat=None,
             mode=mode,
             close=True,
-            extrude_delete_source=False
+            extrude_delete_source=False,
         )
 
     def _emit_open_stroke_band(
@@ -3626,7 +3893,7 @@ class ml:
         offset: float,
         mode: Mode,
         extrude_transform: Optional[TransformExpr] = None,
-        extrude_delete_source = True,
+        extrude_delete_source=True,
         extrude_prop_edit: Optional[ProportionalEdit] = None,
     ) -> None:
         """
@@ -3654,7 +3921,9 @@ class ml:
             px, py = points[i]
 
             left.append((px - nx * offset, py - ny * offset))
-            right.append((px - nx * (thickness + offset), py - ny * (thickness + offset)))
+            right.append(
+                (px - nx * (thickness + offset), py - ny * (thickness + offset))
+            )
 
         poly = left + list(reversed(right))
 
@@ -3670,7 +3939,7 @@ class ml:
             close=True,
             extrude_transform=extrude_transform,
             extrude_delete_source=extrude_delete_source,
-            extrude_prop_edit=extrude_prop_edit
+            extrude_prop_edit=extrude_prop_edit,
         )
 
     def _emit_circle_piece(
@@ -3698,7 +3967,9 @@ class ml:
             )
             for i in range(segments)
         ]
-        self._emit_polyline_face(pts, x, y, z, extrude, dissolve, layer, mode, close=True)
+        self._emit_polyline_face(
+            pts, x, y, z, extrude, dissolve, layer, mode, close=True
+        )
 
     def _emit_pattern_border_on_path(
         self,
@@ -3716,7 +3987,7 @@ class ml:
         dash_length: Optional[float],
         mode: Mode,
         extrude_transform: Optional[TransformExpr] = None,
-        extrude_delete_source = True,
+        extrude_delete_source=True,
         extrude_prop_edit: Optional[ProportionalEdit] = None,
     ):
         outline = _simplify_collinear_closed(outline)
@@ -3759,7 +4030,7 @@ class ml:
                     mode,
                     extrude_transform=extrude_transform,
                     extrude_delete_source=extrude_delete_source,
-                    extrude_prop_edit=extrude_prop_edit
+                    extrude_prop_edit=extrude_prop_edit,
                 )
                 pos += actual_cycle
 
@@ -3776,13 +4047,21 @@ class ml:
                 nx, ny = -ty, tx
                 cx_offset = cx - nx * (offset + radius)
                 cy_offset = cy - ny * (offset + radius)
-                self._emit_circle_piece(cx_offset, cy_offset, radius, x, y, z, extrude, dissolve, layer, mode)
+                self._emit_circle_piece(
+                    cx_offset,
+                    cy_offset,
+                    radius,
+                    x,
+                    y,
+                    z,
+                    extrude,
+                    dissolve,
+                    layer,
+                    mode,
+                )
 
     def _emit_node(
-        self,
-        parent_box: MLBox | None,
-        z_offset: float,
-        subtract_parts: list[Part]
+        self, parent_box: MLBox | None, z_offset: float, subtract_parts: list[Part]
     ) -> None:
         if self.kind == "new_line":
             return
@@ -3795,7 +4074,7 @@ class ml:
 
         if style.display == "none" or self.kind == "generator":
             return
-        
+
         w = self.box.w
         h = self.box.h
         padding, _ = _set_box_model(parent_box, style)
@@ -3805,7 +4084,11 @@ class ml:
         z_epsilon = _get_z_epsilon(style)
         z_step = 0.0 if mode == Mode.ADD else (z_epsilon if not is_root else 0.0)
         has_bg = style.background_mat is not None
-        has_border = bool(style.border_width and style.border_width > 0 and style.border_style != "none")
+        has_border = bool(
+            style.border_width
+            and style.border_width > 0
+            and style.border_style != "none"
+        )
 
         bg_z = 0.0
         flow_z = 0.0
@@ -3820,11 +4103,31 @@ class ml:
         if self._flow_lines or self.children:
             abs_z = flow_z + z_step
 
-        border_w = _len_to_m(style.border_width, parent_box.w if parent_box else None, style.unit_scale) or 0.0
-        border_offset = _len_to_m(style.border_offset, parent_box.w if parent_box else None, style.unit_scale) or 0.0
+        border_w = (
+            _len_to_m(
+                style.border_width,
+                parent_box.w if parent_box else None,
+                style.unit_scale,
+            )
+            or 0.0
+        )
+        border_offset = (
+            _len_to_m(
+                style.border_offset,
+                parent_box.w if parent_box else None,
+                style.unit_scale,
+            )
+            or 0.0
+        )
         border_z_offset = _as_float(style.border_z_index) * z_epsilon
-        border_extrude = (style.border_extrude * style.unit_scale) if style.border_extrude is not None else extrude
-        measure_border = max(border_w + border_offset, 0.0) if style.border_in_measure else 0.0
+        border_extrude = (
+            (style.border_extrude * style.unit_scale)
+            if style.border_extrude is not None
+            else extrude
+        )
+        measure_border = (
+            max(border_w + border_offset, 0.0) if style.border_in_measure else 0.0
+        )
         inner_w = max(0.0, w - 2.0 * measure_border)
         inner_h = max(0.0, h - 2.0 * measure_border)
         dissolve = _as_float(style.dissolve, 2.0)
@@ -3839,12 +4142,20 @@ class ml:
             if style.left is not None:
                 x = _len_to_m(style.left, parent_box.w, style.unit_scale) or 0.0
             elif style.right is not None:
-                x = parent_box.w - w - (_len_to_m(style.right, parent_box.w, style.unit_scale) or 0.0)
+                x = (
+                    parent_box.w
+                    - w
+                    - (_len_to_m(style.right, parent_box.w, style.unit_scale) or 0.0)
+                )
 
             if style.top is not None:
                 y = _len_to_m(style.top, parent_box.h, style.unit_scale) or 0.0
             elif style.bottom is not None:
-                y = parent_box.h - h - (_len_to_m(style.bottom, parent_box.h, style.unit_scale) or 0.0)
+                y = (
+                    parent_box.h
+                    - h
+                    - (_len_to_m(style.bottom, parent_box.h, style.unit_scale) or 0.0)
+                )
 
             x -= w * style.anchor_x
             y -= h * style.anchor_y
@@ -3861,8 +4172,12 @@ class ml:
                     abs_parent_box = MLBox(
                         padding_left + measure_border,
                         padding_top + measure_border,
-                        max(0.0, w - padding_left - padding_right - 2.0 * measure_border),
-                        max(0.0, h - padding_top - padding_bottom - 2.0 * measure_border),
+                        max(
+                            0.0, w - padding_left - padding_right - 2.0 * measure_border
+                        ),
+                        max(
+                            0.0, h - padding_top - padding_bottom - 2.0 * measure_border
+                        ),
                     )
 
                     for index, child in enumerate(self._abs_children):
@@ -3871,7 +4186,7 @@ class ml:
                             child._emit_node(
                                 abs_parent_box,
                                 z_offset=abs_z,
-                                subtract_parts=child_subtract_parts
+                                subtract_parts=child_subtract_parts,
                             )
                             subtract_parts.extend(child_subtract_parts)
 
@@ -3887,12 +4202,14 @@ class ml:
                         content_h,
                     )
 
-                    with Locations(Pos(X=padding_left + measure_border, Y=padding_top + measure_border + offset_y)):
+                    with Locations(
+                        Pos(
+                            X=padding_left + measure_border,
+                            Y=padding_top + measure_border + offset_y,
+                        )
+                    ):
                         self._emit_flow(
-                            flow_z,
-                            flow_box_w,
-                            self._flow_lines,
-                            subtract_parts
+                            flow_z, flow_box_w, self._flow_lines, subtract_parts
                         )
                     return
 
@@ -3907,23 +4224,28 @@ class ml:
                 content_y = padding_top + measure_border
 
                 for index, child in enumerate(self._iter_children_expanded()):
-                    with Locations(Pos(X=content_x + child.box.x, Y=content_y + child.box.y)):
+                    with Locations(
+                        Pos(X=content_x + child.box.x, Y=content_y + child.box.y)
+                    ):
                         child_subtract_parts: list[Part] = []
                         child._emit_node(
                             child_parent_box,
                             z_offset=flow_z,
-                            subtract_parts=child_subtract_parts
+                            subtract_parts=child_subtract_parts,
                         )
                         subtract_parts.extend(child_subtract_parts)
 
         def build_part(part_obj: Part):
             restore = self._apply_transform_to_part(part_obj, style)
             bb = part_obj.bbox
-            part_obj.loc = Pos(
-                X=-bb.min.x,
-                Y=-bb.min.y,
-                Z=0,
-            ) * part_obj.loc
+            part_obj.loc = (
+                Pos(
+                    X=-bb.min.x,
+                    Y=-bb.min.y,
+                    Z=0,
+                )
+                * part_obj.loc
+            )
             add(part_obj, mode=mode)
             restore()
 
@@ -3965,7 +4287,9 @@ class ml:
                     )
                     for i in range(segments)
                 ]
-                layer = _with_alpha(_combine_mat(style.mat, style.background_mat), style.opacity)
+                layer = _with_alpha(
+                    _combine_mat(style.mat, style.background_mat), style.opacity
+                )
                 self._emit_polyline_face(
                     pts,
                     0,
@@ -3989,7 +4313,9 @@ class ml:
                     with BuildCurve() as bc:
                         Polyline(*[(px, py, 0) for px, py in pts2d], close=False)
                     part = bc.part
-                    part.mat = _with_alpha(_combine_mat(style.mat, style.background_mat), style.opacity)
+                    part.mat = _with_alpha(
+                        _combine_mat(style.mat, style.background_mat), style.opacity
+                    )
                     add(part, mode=mode)
 
             elif self.kind == "curve":
@@ -3999,7 +4325,9 @@ class ml:
                     with BuildCurve() as bc:
                         Spline(*pts3d)
                     part = bc.part
-                    part.mat = _with_alpha(_combine_mat(style.mat, style.background_mat), style.opacity)
+                    part.mat = _with_alpha(
+                        _combine_mat(style.mat, style.background_mat), style.opacity
+                    )
                     add(part, mode=mode)
 
             elif self.kind == "part":
@@ -4007,11 +4335,13 @@ class ml:
                 if part_obj is not None:
                     old_mat = part_obj.mat
                     if style.mat is not None:
-                        part_obj.mat = _with_alpha(_combine_mat(style.mat, style.background_mat), style.opacity)
+                        part_obj.mat = _with_alpha(
+                            _combine_mat(style.mat, style.background_mat), style.opacity
+                        )
                     build_part(part_obj)
                     part_obj.mat = old_mat
 
-        def calculate_outer_pts(offset_x = 0.0, offset_y = 0.0):
+        def calculate_outer_pts(offset_x=0.0, offset_y=0.0):
             curve = None
             if style.background_from_curve:
                 curve = extract_curve(style.background_from_curve)
@@ -4056,7 +4386,7 @@ class ml:
                 extrude_prop_edit=style.extrude_prop_edit,
                 extrude_delete_source=style.extrude_delete_source_faces,
                 bevel=style.bevel,
-                cuts=style.background_cuts or 0
+                cuts=style.background_cuts or 0,
             )
             add_tags([Object.TAG_ML_BACKGROUND])
             for cb in style.background_on_build:
@@ -4065,13 +4395,17 @@ class ml:
                     cb.fn()
                 else:
                     cb.fn(bp)
-        
+
         def build_extrude_subtract_parts(outer_pts: list[tuple[float, float]]):
             # Negative extrusion is emitted as a deferred, slightly oversized
             # cutter. It must survive child emission so the parent can subtract
             # it after all geometry sharing this layout space exists.
             if extrude < 0.0:
-                part = self._emit_clip_part(outer_pts, border_w + border_offset, depth=2 * abs(extrude) * style.extrude_subtract_part_height_k)
+                part = self._emit_clip_part(
+                    outer_pts,
+                    border_w + border_offset,
+                    depth=2 * abs(extrude) * style.extrude_subtract_part_height_k,
+                )
                 _fix_subtract_part_size(part, style)
                 subtract_parts.append(part)
             elif border_extrude < 0.0:
@@ -4086,16 +4420,27 @@ class ml:
                     None,
                     border_w,
                     border_offset,
-                    extrude_delete_source=False
+                    extrude_delete_source=False,
                 )
                 _fix_subtract_part_size(part, style)
                 subtract_parts.append(part)
 
         def apply_clip(outer_pts: list[tuple[float, float]]):
             if "hidden" in style.overflow:
-                self._emit_clip_part(outer_pts, border_w + border_offset if style.overflow == 'hidden-border' else 0.0, Mode.INTERSECT_FAST)
+                self._emit_clip_part(
+                    outer_pts,
+                    border_w + border_offset
+                    if style.overflow == "hidden-border"
+                    else 0.0,
+                    Mode.INTERSECT_FAST,
+                )
 
-        def build_border(outer_pts: list[tuple[float, float]], source_curve: Optional[Curve], bp: BuildPart, bp_child: BuildPart):
+        def build_border(
+            outer_pts: list[tuple[float, float]],
+            source_curve: Optional[Curve],
+            bp: BuildPart,
+            bp_child: BuildPart,
+        ):
             if not has_border and not style.border_nodes:
                 return
             loops = [outer_pts]
@@ -4106,25 +4451,40 @@ class ml:
                     loops = _part_outline_loops_xy(bp_combined.part)
             if not loops:
                 return
-            
+
             if style.border_nodes:
                 curves: list[AbstractCurve] = []
                 with BuildPart(mode=Mode.PRIVATE):
                     for loop in loops:
                         loop = _simplify_collinear_closed(loop)
-                        self._emit_polyline_face(loop, z=border_z_offset + extrude, mode=Mode.JOIN)
+                        self._emit_polyline_face(
+                            loop, z=border_z_offset + extrude, mode=Mode.JOIN
+                        )
                     for border_node in style.border_nodes:
                         if border_node.selector:
                             curve = border_node.selector()
                             if isinstance(curve, Curve):
-                                if source_curve is None or curve.source_curve != source_curve.source_curve:
-                                    raise ValueError("Border node selector must return the same curve as the curve used to create the background (background_from_curve)")
+                                if (
+                                    source_curve is None
+                                    or curve.source_curve != source_curve.source_curve
+                                ):
+                                    raise ValueError(
+                                        "Border node selector must return the same curve as the curve used to create the background (background_from_curve)"
+                                    )
                                 with BuildCurve() as bc:
-                                    pts = [(outer_pts[i][0], outer_pts[i][1], 0.0) for i in curve.source_point_indices]
+                                    pts = [
+                                        (outer_pts[i][0], outer_pts[i][1], 0.0)
+                                        for i in curve.source_point_indices
+                                    ]
                                     Polyline(*pts)
                                     curve = bc.curve
                         else:
-                            axis = {"left": -Axis.X, "right": Axis.X, "top": -Axis.Y, "bottom": Axis.Y}[border_node.side or "left"]
+                            axis = {
+                                "left": -Axis.X,
+                                "right": Axis.X,
+                                "top": -Axis.Y,
+                                "bottom": Axis.Y,
+                            }[border_node.side or "left"]
                             curve = wires().group_by(axis)[-1][-1]
                         curves.append(curve)
 
@@ -4134,7 +4494,7 @@ class ml:
                     node.style += MLStyle(
                         width=curve.length() / style.unit_scale,
                         height=0,
-                        locations=Locations(curve.location())
+                        locations=Locations(curve.location()),
                     )
                     border_subtract_parts: list[Part] = []
                     eval_box = self.eval_box
@@ -4143,18 +4503,23 @@ class ml:
                         build_ctx=MLBuildContext(
                             node_data=self._build_ctx.node_data,
                             root_bp=self._build_ctx.root_bp,
-                            eval_transform=eval_box.transform * eval_box.custom_data.offset.inverse,
-                            rl_nodes=self._build_ctx.rl_nodes
+                            eval_transform=eval_box.transform
+                            * eval_box.custom_data.offset.inverse,
+                            rl_nodes=self._build_ctx.rl_nodes,
                         ),
                         subtract_parts=border_subtract_parts,
                         layout_solver=border_node.layout_solver,
                         layout_objective=border_node.layout_objective,
-                        evaluate=border_node.evaluate
+                        evaluate=border_node.evaluate,
                     )
                     if border_node.subtract_parts_passthrough:
                         subtract_parts.extend(border_subtract_parts)
                     node.style = orig_style
-                    add(part, mode=mode, tag=tag_to_list(style.root_tag) + [Object.TAG_ML_BORDER])
+                    add(
+                        part,
+                        mode=mode,
+                        tag=tag_to_list(style.root_tag) + [Object.TAG_ML_BORDER],
+                    )
 
             if not has_border:
                 return
@@ -4181,10 +4546,14 @@ class ml:
                             mode,
                             extrude_transform=style.border_extrude_transform,
                             extrude_delete_source=style.border_extrude_delete_source_faces,
-                            extrude_prop_edit=style.border_extrude_prop_edit
+                            extrude_prop_edit=style.border_extrude_prop_edit,
                         )
                     elif style.border_style in {"dashed", "dotted"}:
-                        border_dash_length = _len_to_m(style.border_dash_length, parent_box.w if parent_box else None, style.unit_scale)
+                        border_dash_length = _len_to_m(
+                            style.border_dash_length,
+                            parent_box.w if parent_box else None,
+                            style.unit_scale,
+                        )
                         self._emit_pattern_border_on_path(
                             loop,
                             0,
@@ -4201,7 +4570,7 @@ class ml:
                             mode,
                             extrude_transform=style.border_extrude_transform,
                             extrude_delete_source=style.border_extrude_delete_source_faces,
-                            extrude_prop_edit=style.border_extrude_prop_edit
+                            extrude_prop_edit=style.border_extrude_prop_edit,
                         )
                     elif style.border_style == "double":
                         stripe = max(border_w / 3.0, 1e-6)
@@ -4218,7 +4587,7 @@ class ml:
                             mode,
                             extrude_transform=style.border_extrude_transform,
                             extrude_delete_source=style.border_extrude_delete_source_faces,
-                            extrude_prop_edit=style.border_extrude_prop_edit
+                            extrude_prop_edit=style.border_extrude_prop_edit,
                         )
                         self._emit_stroke_band(
                             loop,
@@ -4233,7 +4602,7 @@ class ml:
                             mode,
                             extrude_transform=style.border_extrude_transform,
                             extrude_delete_source=style.border_extrude_delete_source_faces,
-                            extrude_prop_edit=style.border_extrude_prop_edit
+                            extrude_prop_edit=style.border_extrude_prop_edit,
                         )
                 add_tags(tag_to_list(style.root_tag) + [Object.TAG_ML_BORDER])
 
@@ -4245,9 +4614,11 @@ class ml:
                     segments=style.bend_segments,
                     origin=Pos(X=w * 0.5),
                 )
-                transform(op=Pos(
-                    Z=-bp.part.bbox.max.z,
-                ))
+                transform(
+                    op=Pos(
+                        Z=-bp.part.bbox.max.z,
+                    )
+                )
 
         cached_part: Part | None = None
         assert self._build_ctx is not None
@@ -4259,19 +4630,22 @@ class ml:
 
         parent_bp = BuildPart._get_context()
 
-        with Locations(Pos(X=x, Y=y, Z=-z)), \
-             BuildPart(
-                 part=Part.box_set_empty() if self._is_eval else cached_part,
-                 mode=Mode.JOIN,
-                 loc_ctx_passthrough=style.loc_ctx_passthrough
-             ) as bp, \
-                style.locations or Locations():
-            
+        with (
+            Locations(Pos(X=x, Y=y, Z=-z)),
+            BuildPart(
+                part=Part.box_set_empty() if self._is_eval else cached_part,
+                mode=Mode.JOIN,
+                loc_ctx_passthrough=style.loc_ctx_passthrough,
+            ) as bp,
+            style.locations or Locations(),
+        ):
             if self._is_eval:
                 if style.evaluate != False:
                     if self.kind == "part":
                         part_obj: Part = self.attrs.get("part")
-                        box_part = part_obj.get_bbox_set_part(custom_data=EvaluationNodeData(node=self))
+                        box_part = part_obj.get_bbox_set_part(
+                            custom_data=EvaluationNodeData(node=self)
+                        )
                         build_part(box_part)
                     else:
                         box_w = max(w, 1e-6)
@@ -4281,16 +4655,14 @@ class ml:
                         box_d = max(z_max - z_min, 1e-6)
 
                         center_offset = Pos(
-                            X=box_w / 2.0,
-                            Y=box_h / 2.0,
-                            Z=-(z_min + z_max) / 2.0
+                            X=box_w / 2.0, Y=box_h / 2.0, Z=-(z_min + z_max) / 2.0
                         )
 
-                        outer_pts, _ = calculate_outer_pts(offset_x=-center_offset.x, offset_y=-center_offset.y)
+                        outer_pts, _ = calculate_outer_pts(
+                            offset_x=-center_offset.x, offset_y=-center_offset.y
+                        )
                         eval_node = EvaluationNodeData(
-                            node=self,
-                            offset=center_offset,
-                            curve_points=outer_pts
+                            node=self, offset=center_offset, curve_points=outer_pts
                         )
 
                         with Locations(center_offset):
@@ -4303,7 +4675,9 @@ class ml:
                 build_background(outer_pts, bp)
                 build_other_kinds()
                 add_tags(tag_to_list(style.root_tag))
-                with BuildPart(mode=mode if extrude == 0.0 else Mode.JOIN, loc_ctx_passthrough=True) as bp_child:
+                with BuildPart(
+                    mode=mode if extrude == 0.0 else Mode.JOIN, loc_ctx_passthrough=True
+                ) as bp_child:
                     with Locations(Pos(Z=-extrude)):
                         build_children()
                         apply_clip(outer_pts)
@@ -4314,21 +4688,31 @@ class ml:
                 build_extrude_subtract_parts(outer_pts)
                 apply_3d_ops(bp)
                 if self.kind == "joint":
-                    bp.part.register_joint(self.attrs["name"], bp.part.joint(Location(), deformable=True), propagate=True)
+                    bp.part.register_joint(
+                        self.attrs["name"],
+                        bp.part.joint(Location(), deformable=True),
+                        propagate=True,
+                    )
                 if self._cache_hash is not None:
                     # The cache stores render-stage geometry only. Layout has
                     # already resolved placement, so identical components can
                     # share construction while each instance gets its transform.
                     self._build_ctx.part_cache[self._cache_hash] = MLCacheEntry(
-                        part=bp.part.copy(),
-                        subtract_parts=subtract_parts.copy()
-                        )
+                        part=bp.part.copy(), subtract_parts=subtract_parts.copy()
+                    )
 
             if style.pivot_x or style.pivot_y or style.pivot_z:
                 pivot_transform = Pos(
                     X=_len_to_m(style.pivot_x, inner_w, style.unit_scale) or 0.0,
                     Y=_len_to_m(style.pivot_y, inner_h, style.unit_scale) or 0.0,
-                    Z=-(_len_to_m(style.pivot_z, bp.bbox.max.z - bp.bbox.min.z, style.unit_scale) or 0.0)
+                    Z=-(
+                        _len_to_m(
+                            style.pivot_z,
+                            bp.bbox.max.z - bp.bbox.min.z,
+                            style.unit_scale,
+                        )
+                        or 0.0
+                    ),
                 )
                 transform(op=pivot_transform)
                 bp.transform = pivot_transform.inverse
@@ -4338,7 +4722,14 @@ class ml:
                 final_transform = Pos(
                     X=_len_to_m(style.x_offset, inner_w, style.unit_scale) or 0.0,
                     Y=_len_to_m(style.y_offset, inner_h, style.unit_scale) or 0.0,
-                    Z=-(_len_to_m(style.z_offset, bp.bbox.max.z - bp.bbox.min.z, style.unit_scale) or 0.0)
+                    Z=-(
+                        _len_to_m(
+                            style.z_offset,
+                            bp.bbox.max.z - bp.bbox.min.z,
+                            style.unit_scale,
+                        )
+                        or 0.0
+                    ),
                 ) * (final_transform or Transform())
 
             if final_transform is not None and self.kind != "part":
@@ -4378,11 +4769,10 @@ class ml:
         ctx = MLBuildContext(
             node_data=self._build_ctx.node_data,
             root_bp=self._build_ctx.root_bp,
-            evaluate=True
+            evaluate=True,
         )
-        with ml_build_context(ctx):
-            with BuildPart(part=part, mode=Mode.PRIVATE):
-                self._emit_node(None, 0.0, [])
+        with ml_build_context(ctx), BuildPart(part=part, mode=Mode.PRIVATE):
+            self._emit_node(None, 0.0, [])
         if self._build_ctx.eval_transform:
             part.apply_transform(self._build_ctx.eval_transform)
         for box in part.boxes:
@@ -4391,17 +4781,17 @@ class ml:
 
     def build(
         self,
-        mode = Mode.JOIN,
+        mode=Mode.JOIN,
         width: Optional[float] = None,
         height: Optional[float] = None,
         build_ctx: Optional[MLBuildContext] = None,
         subtract_parts: list[Part] = [],
-        remove_double_verts = False,
-        register_chain_joints = True,
+        remove_double_verts=False,
+        register_chain_joints=True,
         layout_solver: SolverLike = sm.nelder_mead(),
         layout_objective: Callable = lambda: None,
         evaluate: bool = False,
-        instantiation_delay_sec=0.1
+        instantiation_delay_sec=0.1,
     ):
         """Resolve the layout first, then emit the resulting final geometry."""
         ctx = build_ctx or MLBuildContext()
@@ -4417,18 +4807,24 @@ class ml:
                 layout_objective,
             )
             root._compute_cache_hash()
-            time.sleep(instantiation_delay_sec) # hack: to avoid crash
-            with BuildPart(part=Part.box_set_empty() if self._is_eval else None, mode=mode) as bp:
+            time.sleep(instantiation_delay_sec)  # hack: to avoid crash
+            with BuildPart(
+                part=Part.box_set_empty() if self._is_eval else None, mode=mode
+            ) as bp:
                 ctx.root_bp = ctx.root_bp or bp
                 root._emit_node(None, 0.0, subtract_parts)
                 bp.part._fix_topology(remove_double_verts=remove_double_verts)
                 if register_chain_joints:
+
                     def reg_chain_joint(axis: VectorLike):
                         loc = bp.part.bbox_joint(axis).loc
                         bp.part.register_joint(
                             name=_chain_joint_axis_name(axis),
-                            joint=bp.part.joint(Pos(X=loc.x, Y=loc.y, Z=0.0), deformable=True)
+                            joint=bp.part.joint(
+                                Pos(X=loc.x, Y=loc.y, Z=0.0), deformable=True
+                            ),
                         )
+
                     for axis in (Axis.X, Axis.Y):
                         reg_chain_joint(axis)
                         reg_chain_joint(-axis)
@@ -4443,7 +4839,11 @@ class ml:
                                 add(box.part)
                                 add(points_to_curve(box.custom_data.curve_points))
                                 eval_box_bp.transform = box.transform
-                                eval_box_bp.mat = mat.PBR(alpha=0.1) + (show_box if isinstance(show_box, MaterialLayer) else mat.yellow)
+                                eval_box_bp.mat = mat.PBR(alpha=0.1) + (
+                                    show_box
+                                    if isinstance(show_box, MaterialLayer)
+                                    else mat.yellow
+                                )
 
         self.style = orig_style
         self.parent = None
@@ -4452,11 +4852,10 @@ class ml:
     def __repr__(self) -> str:
         return f"ml(kind={self.kind!r}, box={self.box}, children={len(self.children)})"
 
+
 def on_build(fn):
     if not ml._ctx_stack:
-        raise RuntimeError(
-            "on_build used outside of 'with ml()' context"
-        )
+        raise RuntimeError("on_build used outside of 'with ml()' context")
 
     ml._ctx_stack[-1]._on_build_callbacks.append(fn)
     return fn

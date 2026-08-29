@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import fnmatch
 import importlib
 import os
 import sys
@@ -16,13 +15,33 @@ TESTS_ROOT = PROJECT_ROOT / "tests"
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--file", nargs="+", help="Test files, relative to the project root.")
-    parser.add_argument("--test", action="append", help="Test id; repeat for multiple tests.")
-    parser.add_argument("--pattern", help="Discovery pattern, for example test_chain*.py.")
-    parser.add_argument("--list", action="store_true", help="List selected test ids without running them.")
+    parser.add_argument(
+        "--file", nargs="+", help="Test files, relative to the project root."
+    )
+    parser.add_argument(
+        "--test", action="append", help="Test id; repeat for multiple tests."
+    )
+    parser.add_argument(
+        "--pattern", help="Discovery pattern, for example test_chain*.py."
+    )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="List selected test ids without running them.",
+    )
     parser.add_argument("--verbosity", type=int, default=2)
-    parser.add_argument("--update-hashes", action="store_true")
-    parser.add_argument("--show-geometry-if-failed", action="store_true")
+    parser.add_argument(
+        "--update-hashes",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Update expected hashes on failure (enabled by default).",
+    )
+    parser.add_argument(
+        "--show-geometry-if-failed",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Show failed geometry in Blender (enabled by default).",
+    )
     return parser.parse_args(argv)
 
 
@@ -76,7 +95,11 @@ def _normalize_test_id(test_id: str) -> str:
 
 def _suite_from_args(args: argparse.Namespace) -> unittest.TestSuite:
     loader = unittest.TestLoader()
-    selections = [args.test is not None, args.file is not None, args.pattern is not None]
+    selections = [
+        args.test is not None,
+        args.file is not None,
+        args.pattern is not None,
+    ]
     if sum(selections) > 1:
         raise ValueError("Use only one of --test, --file, or --pattern at a time")
     if args.test:
@@ -87,7 +110,11 @@ def _suite_from_args(args: argparse.Namespace) -> unittest.TestSuite:
     if args.file:
         suite = unittest.TestSuite()
         for file_name in args.file:
-            suite.addTests(loader.loadTestsFromModule(importlib.import_module(_module_from_file(file_name))))
+            suite.addTests(
+                loader.loadTestsFromModule(
+                    importlib.import_module(_module_from_file(file_name))
+                )
+            )
         return suite
     return loader.discover(str(TESTS_ROOT), pattern=args.pattern or "test*.py")
 

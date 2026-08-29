@@ -1,6 +1,7 @@
 from blender_cad import *
 from tests.test_base import BaseCADTest
 
+
 class TestChain(BaseCADTest):
     """
     Category: Chain
@@ -52,14 +53,14 @@ class TestChain(BaseCADTest):
                 ),
                 # Specify the flow direction axis for alignment
                 axis=-Axis.Y,
-                rot_axis=Axis.X
+                rot_axis=Axis.X,
             ).build()
 
         self.assertPart(
-            result.part, 
+            result.part,
             "53257b056cf092a2e67e21db8674965ad5776715ede6175e4719ab11951b668a",
             "test_chain_operation",
-            use_materials=True
+            use_materials=True,
         )
 
     def test_chained_layout_branching_and_forks(self):
@@ -74,7 +75,6 @@ class TestChain(BaseCADTest):
                         background_mat=mat.red,
                     )
                 ),
-                
                 # Fork 1: Green branch sprouting to the right (+X) rotated 90° on Y
                 chain(
                     Rot(Y=90),
@@ -85,9 +85,8 @@ class TestChain(BaseCADTest):
                             background_mat=mat.green,
                         )
                     ),
-                    axis=Axis.X
+                    axis=Axis.X,
                 ),
-                
                 # Fork 2: Complex nested yellow branches splitting off to the left (-X)
                 chain(
                     chain(
@@ -99,7 +98,7 @@ class TestChain(BaseCADTest):
                                 background_mat=mat.yellow,
                             )
                         ),
-                        axis=Axis.X
+                        axis=Axis.X,
                     ),
                     Rot(Y=-90),
                     ml(
@@ -109,9 +108,8 @@ class TestChain(BaseCADTest):
                             background_mat=mat.yellow,
                         )
                     ),
-                    axis=-Axis.X
+                    axis=-Axis.X,
                 ),
-                
                 # Main Sequence continues: Fold 90° on X into a blue plate
                 Rot(X=90),
                 ml(
@@ -121,7 +119,6 @@ class TestChain(BaseCADTest):
                         background_mat=mat.blue,
                     )
                 ),
-                
                 # Main Sequence: Fold another 90° on X into a red plate
                 Rot(X=90),
                 ml(
@@ -131,7 +128,6 @@ class TestChain(BaseCADTest):
                         background_mat=mat.red,
                     )
                 ),
-                
                 # Main Sequence End: A final blue plate attached to a list wrapper
                 [
                     Rot(X=90),
@@ -143,7 +139,6 @@ class TestChain(BaseCADTest):
                         )
                     ),
                 ],
-                
                 # Global chain overrides for attachment direction and boolean strategy
                 axis=-Axis.Y,
             ).build()
@@ -168,9 +163,7 @@ class TestChain(BaseCADTest):
                         bottom_scale=0.5,
                     )
                 ),
-
                 90,  # Fold 90 degrees upward to start the box walls
-                
                 # Segment 2: Blue wall with an embossed green center square
                 ml(
                     style(
@@ -180,17 +173,10 @@ class TestChain(BaseCADTest):
                     ),
                     style.align_center(),
                     ml(
-                        style(
-                            width=1,
-                            height=1,
-                            background_mat=mat.green,
-                            extrude=0.1
-                        ),
-                    )
+                        style(width=1, height=1, background_mat=mat.green, extrude=0.1),
+                    ),
                 ),
-
                 90,  # Fold another 90 degrees (forming the top/opposite face)
-                
                 # Segment 3: Simple flat red wall
                 ml(
                     style(
@@ -199,9 +185,7 @@ class TestChain(BaseCADTest):
                         background_mat=mat.red,
                     )
                 ),
-                
                 90,  # Final 90-degree fold to complete the 4-sided loop
-                
                 # Segment 4: Blue wall with a tapered top and an engraved green pocket
                 ml(
                     style(
@@ -217,16 +201,16 @@ class TestChain(BaseCADTest):
                             height=1,
                             background_mat=mat.green,
                             extrude=-0.1,
-                            top_scale=0.5
+                            top_scale=0.5,
                         ),
-                    )
+                    ),
                 ),
-                side="top"
+                side="top",
             ).build()
 
         self.assertPart(
             result.part,
-            '65797c0fd93c5a6b0f0e5efad581e395cf07c6bf20b08e0454b1098e92763905',
+            "65797c0fd93c5a6b0f0e5efad581e395cf07c6bf20b08e0454b1098e92763905",
             "test_chained_layout_folding_3d_box",
             use_materials=True,
         )
@@ -240,15 +224,10 @@ class TestChain(BaseCADTest):
                     background_mat=mat.red,
                 )
             )
-            
+
             # Step 2: Build a chain where dimensions are passed down implicitly to each wall instance
             chain(
-                wall,
-                Rot(Y=30),
-                wall,
-                axis=Axis.X,
-                item_width=2,
-                item_height=2
+                wall, Rot(Y=30), wall, axis=Axis.X, item_width=2, item_height=2
             ).build()
 
         self.assertPart(
@@ -282,16 +261,16 @@ class TestChain(BaseCADTest):
                     ),
                     axis=Axis.X,
                     angle=360,
-                    segments=5
+                    segments=5,
                 ),
                 axis=Axis.Y,
             ).build()
 
         self.assertPart(
-            result.part, 
+            result.part,
             "69ba82d4f0b74c08e590e1b3e2fcd70e79decc5acf1e838c7bc63c69d7de409d",
             "test_twist_chain_operation",
-            use_materials=True
+            use_materials=True,
         )
 
     def test_twist_chain_with_radial_branching(self):
@@ -307,7 +286,6 @@ class TestChain(BaseCADTest):
                             background_mat=mat.red,
                         )
                     ),
-                    
                     # Radial Fork 1: Green branch sprouting outward along +X from the first curved segment
                     chain(
                         Rot(Y=0),
@@ -318,9 +296,8 @@ class TestChain(BaseCADTest):
                                 background_mat=mat.green,
                             )
                         ),
-                        axis=Axis.X
+                        axis=Axis.X,
                     ),
-                    
                     # Segment 2: Blue intermediate tile
                     ml(
                         style(
@@ -329,7 +306,6 @@ class TestChain(BaseCADTest):
                             background_mat=mat.blue,
                         )
                     ),
-                    
                     # Radial Fork 2: Yellow branch sprouting outward along +X from the subsequent curved segment
                     chain(
                         Rot(Y=0),
@@ -340,14 +316,12 @@ class TestChain(BaseCADTest):
                                 background_mat=mat.yellow,
                             )
                         ),
-                        axis=Axis.X
+                        axis=Axis.X,
                     ),
-
                     axis=Axis.X,
                     angle=360,
-                    segments=5
+                    segments=5,
                 ),
-                
                 axis=Axis.Y,
             ).build()
 
@@ -382,25 +356,27 @@ class TestChain(BaseCADTest):
                                 ml(
                                     style.circle(radius=0.5, mat=mat.yellow),
                                     style.absolute_center(),
-                                    style(extrude=1)
-                                )
+                                    style(extrude=1),
+                                ),
                             ),
                             axis=-Axis.X,
                             clip_by_parent=True,
-                            tag="cap"
-                        ) if i == 0 else None
+                            tag="cap",
+                        )
+                        if i == 0
+                        else None,
                     ],
                     angle=360,
-                    segments=5
+                    segments=5,
                 ),
                 axis=Axis.Y,
                 rot_axis=Axis.X,
                 transform=Rot(Y=90),
             ).build()
-            
+
             # Step 2: Scale the tagged cap geometry
             # Due to shared topology, the entire twisted structure deforms along with the cap, creating a frustum-like effect
-            transform(faces().split().tagged('cap'), op=Origin(0.5) * Scale(XY=0.5))
+            transform(faces().split().tagged("cap"), op=Origin(0.5) * Scale(XY=0.5))
 
         self.assertPart(
             result.part,
@@ -420,16 +396,12 @@ class TestChain(BaseCADTest):
                     background_mat=mat.red,
                 )
             )
-            
+
             # Construct a continuous chain using straight segments and bends
             chain(
                 road,
                 # First bend: 90 degrees around Z axis (Blue)
-                chain.bend(
-                    angle=90,
-                    axis=Axis.Z,
-                    segments=5
-                ),
+                chain.bend(angle=90, axis=Axis.Z, segments=5),
                 ml(
                     style(
                         width=2,
@@ -439,11 +411,7 @@ class TestChain(BaseCADTest):
                 ),
                 road,
                 # Second bend: -180 degrees around Z axis with wider width (Green)
-                chain.bend(
-                    angle=-180,
-                    axis=Axis.Z,
-                    segments=10
-                ),
+                chain.bend(angle=-180, axis=Axis.Z, segments=10),
                 ml(
                     style(
                         width=4,
@@ -452,11 +420,7 @@ class TestChain(BaseCADTest):
                     )
                 ),
                 # Third bend: 180 degrees counter-bend around Z axis (Green)
-                chain.bend(
-                    angle=180,
-                    axis=Axis.Z,
-                    segments=10
-                ),
+                chain.bend(angle=180, axis=Axis.Z, segments=10),
                 ml(
                     style(
                         width=4,
@@ -466,11 +430,7 @@ class TestChain(BaseCADTest):
                 ),
                 road,
                 # Fourth bend: 90 degrees around Z axis (Blue)
-                chain.bend(
-                    angle=90,
-                    axis=Axis.Z,
-                    segments=5
-                ),
+                chain.bend(angle=90, axis=Axis.Z, segments=5),
                 ml(
                     style(
                         width=2,
@@ -480,12 +440,7 @@ class TestChain(BaseCADTest):
                 ),
                 road,
                 # Fifth bend: 20 degrees vertical incline around Y axis (Yellow)
-                chain.bend(
-
-                    angle=20,
-                    axis=Axis.Y,
-                    segments=5
-                ),
+                chain.bend(angle=20, axis=Axis.Y, segments=5),
                 ml(
                     style(
                         width=2,
@@ -500,8 +455,8 @@ class TestChain(BaseCADTest):
 
         # Verify the final geometry hash to ensure all bends deformed and aligned correctly
         self.assertPart(
-            result.part, 
-            "9587c8b9888e883dab1eb0a361ba562091311d948daed839a3315b17b70d1188", 
+            result.part,
+            "9587c8b9888e883dab1eb0a361ba562091311d948daed839a3315b17b70d1188",
             "test_chain_bend_sequences",
             use_materials=True,
         )
@@ -517,22 +472,14 @@ class TestChain(BaseCADTest):
                     background_mat=mat.red,
                 )
             )
-            
+
             # Construct a chain with a nested bend to test multi-axis deformation
             chain(
                 road,
                 # Inner bend: First deforms the flat style 50 degrees around Z axis
-                chain.bend(
-                    angle=50,
-                    axis=Axis.Z,
-                    segments=5
-                ),
+                chain.bend(angle=50, axis=Axis.Z, segments=5),
                 # Outer bend: Deforms the already bent geometry -10 degrees around X axis
-                chain.bend(
-                    angle=-10,
-                    axis=Axis.X,
-                    segments=5
-                ),
+                chain.bend(angle=-10, axis=Axis.X, segments=5),
                 ml(
                     style(
                         width=2,
@@ -547,8 +494,8 @@ class TestChain(BaseCADTest):
 
         # Verify the final geometry hash to ensure nested deformations aligned correctly
         self.assertPart(
-            result.part, 
-            "f3586e8ea5621dff8747b4f521bdd1f4ab844740160f02df68a635ddc7ea480f", 
+            result.part,
+            "f3586e8ea5621dff8747b4f521bdd1f4ab844740160f02df68a635ddc7ea480f",
             "test_nested_chain_bends",
             use_materials=True,
         )
@@ -568,10 +515,7 @@ class TestChain(BaseCADTest):
                         )
                     ),
                     # 90-degree bend segment (Blue)
-                    chain.bend(
-                        angle=90,
-                        segments=5
-                    ),
+                    chain.bend(angle=90, segments=5),
                     ml(
                         style(
                             width=2,
@@ -579,14 +523,15 @@ class TestChain(BaseCADTest):
                             background_mat=mat.blue,
                         ),
                     ),
-                ] * 4,
-                side="top"
+                ]
+                * 4,
+                side="top",
             ).build()
 
         # Verify the final closed or looping geometry hash to ensure correct transformation accumulation
         self.assertPart(
-            result.part, 
-            "698563a83bc393a696227ea3616eef81551d8ab181a6182695bfa9eb812a7663", 
+            result.part,
+            "698563a83bc393a696227ea3616eef81551d8ab181a6182695bfa9eb812a7663",
             "test_chain_bend_loop",
             use_materials=True,
         )
@@ -600,7 +545,7 @@ class TestChain(BaseCADTest):
                     background_mat=mat.red,
                 )
             )
-            
+
             # Step 2: Define a composite wall component featuring an embedded yellow window panel
             wall_with_window = ml(
                 style(
@@ -612,11 +557,11 @@ class TestChain(BaseCADTest):
                         background_mat=mat.yellow,
                         width="50%",
                         height="50%",
-                        extrude=0.05
+                        extrude=0.05,
                     )
-                )
+                ),
             )
-            
+
             # Step 3: Assemble a single hollow 3D corridor segment profile using sub-chains
             corridor = chain(
                 wall,
@@ -629,25 +574,19 @@ class TestChain(BaseCADTest):
                 axis=Axis.X,
                 rot_axis=Axis.Y,
                 item_width=2,
-                item_height=4
+                item_height=4,
             ).part
-            
+
             # Step 4: String multiple corridor segments together, applying sequential 3D bend operations
             chain(
                 corridor,
                 corridor,
                 # Deform the third section with a positive 90-degree curve
-                chain.bend(
-                    angle=90,
-                    segments=5
-                ),
+                chain.bend(angle=90, segments=5),
                 corridor,
                 corridor,
                 # Deform the fifth section with a negative 45-degree curve
-                chain.bend(
-                    angle=-45,
-                    segments=5
-                ),
+                chain.bend(angle=-45, segments=5),
                 corridor,
                 axis=Axis.Y,
                 rot_axis=Axis.Z,
@@ -672,12 +611,12 @@ class TestChain(BaseCADTest):
                         )
                     ),
                     angle=360,
-                    segments=4
+                    segments=4,
                 ),
                 axis=Axis.X,
                 rot_axis=Axis.Y,
                 item_width=2,
-                item_height=4
+                item_height=4,
             ).part
 
             # Step 2: Define a T-junction corridor segment that conditionally opens up a side path at the second index
@@ -695,20 +634,22 @@ class TestChain(BaseCADTest):
                                     width=2,
                                     height="100%",
                                     extrude=-1,
-                                    subtract=True
+                                    subtract=True,
                                 )
-                            ) if i == 1 else None
+                            )
+                            if i == 1
+                            else None,
                         ),
                     ],
                     angle=360,
-                    segments=4
+                    segments=4,
                 ),
                 axis=-Axis.Y,
                 rot_axis=Axis.X,
                 item_width=6,
-                item_height=2
+                item_height=2,
             ).part
-            
+
             # Step 3: Construct the main linear path and split into two distinct branches at the T-junction
             chain(
                 corridor,
@@ -736,7 +677,10 @@ class TestChain(BaseCADTest):
 
         self.assertPart(
             result.part,
-            ["e926123061dab3cad38c1d421b447272ec17ca214a4e4424077be17010ad496f", "f54dafd6ccadbd5b75081086bda463ba020cdb1ddb8d77542ec67fcc36232a16"],
+            [
+                "e926123061dab3cad38c1d421b447272ec17ca214a4e4424077be17010ad496f",
+                "f54dafd6ccadbd5b75081086bda463ba020cdb1ddb8d77542ec67fcc36232a16",
+            ],
             "test_chain_t_junction_corridor_branching_and_attachments",
             use_materials=True,
         )
@@ -750,31 +694,21 @@ class TestChain(BaseCADTest):
                     background_mat=mat.red,
                 )
             )
-            
+
             # Step 2: Build the first complex layout combining multiple nested child chains with parent clipping
             chain(
                 wall,
                 # Child chain automatically adopts parent dimensions and clips to the parent geometry context
-                chain(
-                    Rot(X=90),
-                    wall,
-                    axis=Axis.Y,
-                    clip_by_parent=True
-                ),
+                chain(Rot(X=90), wall, axis=Axis.Y, clip_by_parent=True),
                 # Child chain clips using an explicit SUBTRACT boolean mode against the parent
-                chain(
-                    Rot(X=-90),
-                    wall,
-                    axis=-Axis.Y,
-                    clip_by_parent=Mode.SUBTRACT
-                ),
+                chain(Rot(X=-90), wall, axis=-Axis.Y, clip_by_parent=Mode.SUBTRACT),
                 Rot(Y=120),
                 wall,
                 Rot(Y=120),
                 wall,
                 axis=-Axis.X,
                 item_width=2,
-                item_height=2
+                item_height=2,
             ).build()
 
             # Step 3: Verify the same clipping and auto-dimension scaling behavior within a shifted spatial location
@@ -782,25 +716,15 @@ class TestChain(BaseCADTest):
                 chain(
                     wall,
                     # Dimension-less nested chain automatically matches the item_width/item_height of this parent block
-                    chain(
-                        Rot(Y=-90),
-                        wall,
-                        axis=Axis.X,
-                        clip_by_parent=True
-                    ),
-                    chain(
-                        Rot(Y=90),
-                        wall,
-                        axis=-Axis.X,
-                        clip_by_parent=Mode.SUBTRACT
-                    ),
+                    chain(Rot(Y=-90), wall, axis=Axis.X, clip_by_parent=True),
+                    chain(Rot(Y=90), wall, axis=-Axis.X, clip_by_parent=Mode.SUBTRACT),
                     Rot(X=120),
                     wall,
                     Rot(X=120),
                     wall,
                     axis=Axis.Y,
                     item_width=1,
-                    item_height=3
+                    item_height=3,
                 ).build()
 
         self.assertPart(
@@ -813,7 +737,7 @@ class TestChain(BaseCADTest):
         """Verify that scaling a tagged middle section deforms adjacent connected sections due to shared vertices."""
         with BuildPart() as result:
             # Step 1: Define a reusable factory function for twisted wall segments with custom tagging
-            walls = lambda tag: \
+            walls = lambda tag: (
                 chain(
                     chain.twist(
                         ml(
@@ -825,24 +749,25 @@ class TestChain(BaseCADTest):
                         ),
                         axis=Axis.X,
                         angle=360,
-                        segments=5
+                        segments=5,
                     ),
                     axis=Axis.Y,
                     transform=Rot(Y=90),
-                    tag=tag
+                    tag=tag,
                 ).part
-            
+            )
+
             # Step 2: Stack three sequential wall segments along the Z-axis, tagging each distinctly
             chain(
-                walls('walls_1'),
-                walls('walls_2'),
-                walls('walls_3'),
+                walls("walls_1"),
+                walls("walls_2"),
+                walls("walls_3"),
                 axis=Axis.Z,
             ).build()
 
             # Step 3: Scale only the middle segment ('walls_2')
             # The adjacent segments ('walls_1' and 'walls_3') must stretch and deform because they share topology
-            transform(faces().split().tagged('walls_2'), op=Origin(0.5) * Scale(XY=0.5))
+            transform(faces().split().tagged("walls_2"), op=Origin(0.5) * Scale(XY=0.5))
 
             # Step 4: Extract part for top wall ('walls_3') and shift it to the right
             add(faces().split().tagged("walls_3").part(), offset=Pos(X=5))
@@ -853,4 +778,3 @@ class TestChain(BaseCADTest):
             "test_geometry_deformation_by_tag_with_shared_vertices",
             use_materials=True,
         )
-

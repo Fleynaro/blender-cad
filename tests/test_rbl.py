@@ -1,12 +1,14 @@
 from blender_cad import *
 from tests.test_base import BaseCADTest
 
+
 class TestRuleBasedLayoutSolver(BaseCADTest):
     """
     Category: Rule-Based Layout Solver constraints & interactions.
-    Covers gravity, transforms, rule grouping, priorities, curve boundaries, 
+    Covers gravity, transforms, rule grouping, priorities, curve boundaries,
     look-at/along orientation, stack rules, DOF configuration and more.
     """
+
     box_style = style(width=1, height=1, x_offset="-50%", y_offset="-50%")
 
     def test_basic_gravity_rule(self):
@@ -223,7 +225,6 @@ class TestRuleBasedLayoutSolver(BaseCADTest):
                 )
                 | rl.transform(y=0)
                 | rl.size(x=2, init=True),
-
                 # Step 2: Define a blue object whose size evaluates dynamically based on the red element's bounds
                 ml(
                     box_style,
@@ -231,7 +232,6 @@ class TestRuleBasedLayoutSolver(BaseCADTest):
                 )
                 | rl.transform(y=2)
                 | rl.size(x=lambda: rl.get_size(red).x * 2),
-
                 # Step 3: Define a green object with a soft size constraint allowing flexibility during collision tracking
                 ml(
                     box_style,
@@ -248,19 +248,28 @@ class TestRuleBasedLayoutSolver(BaseCADTest):
             use_materials=True,
         )
 
-
     def test_outside_constraint_and_gravity_resolution(self):
         """Verify that the outside constraint prevents geometry overlap during gravity resolution between two objects."""
         with BuildPart() as result:
             # Step 1: Define two distinct layout objects with specific materials and initial extrusions
-            obj_a = rl.object(ml(self.box_style, style(background_mat=mat.red, transform=Scale(0.5) * Pos(Z=-0.05))))
-            obj_b = rl.object(ml(self.box_style, style(background_mat=mat.blue, extrude=0.1)))
-            
+            obj_a = rl.object(
+                ml(
+                    self.box_style,
+                    style(background_mat=mat.red, transform=Scale(0.5) * Pos(Z=-0.05)),
+                )
+            )
+            obj_b = rl.object(
+                ml(self.box_style, style(background_mat=mat.blue, extrude=0.1))
+            )
+
             # Step 2: Resolve the physics group where mutual gravity pulls them together, bounded by the outside rule
             (
                 rl.group(
                     # Object A starts transformed and is strictly constrained to remain outside Object B's boundary
-                    obj_a | rl.gravity(obj_b) | rl.transform(x=-5.0, rz=45.0, init=True) | rl.outside(obj_b),
+                    obj_a
+                    | rl.gravity(obj_b)
+                    | rl.transform(x=-5.0, rz=45.0, init=True)
+                    | rl.outside(obj_b),
                     # Object B starts on the opposite side and gravitates toward Object A
                     obj_b | rl.gravity(obj_a) | rl.transform(x=5.0, init=True),
                 )
@@ -303,7 +312,6 @@ class TestRuleBasedLayoutSolver(BaseCADTest):
             use_materials=True,
         )
 
-
     def test_inside_curve_constraint_multiple_points(self):
         """Verify the constraint enforcing multiple point-like objects to stay bounded inside a transformed curve boundary."""
         with BuildPart() as result:
@@ -335,7 +343,9 @@ class TestRuleBasedLayoutSolver(BaseCADTest):
                     )
                     | rl.gravity(Pos(X=5, Y=-10)),
                 )
-                | rl.inside(bc, shell_override=rl.point()) # make collision shell a point
+                | rl.inside(
+                    bc, shell_override=rl.point()
+                )  # make collision shell a point
             ).resolve(mode=Mode.JOIN)
 
         self.assertPart(
@@ -389,6 +399,7 @@ class TestRuleBasedLayoutSolver(BaseCADTest):
     def test_look_at_and_look_along_orientation(self):
         """Verify orientation rules including soft look_at targets and explicit look_along directional vectors."""
         from itertools import product
+
         with BuildPart() as result:
             box_style = self.box_style + style(
                 top_scale=0.1,
@@ -406,7 +417,6 @@ class TestRuleBasedLayoutSolver(BaseCADTest):
                     | rl.look_at(Pos(X=0, Y=0), soft=True)
                     for x, y in product([5, -5], repeat=2)
                 ],
-
                 [
                     ml(
                         box_style,
@@ -418,7 +428,6 @@ class TestRuleBasedLayoutSolver(BaseCADTest):
                     | rl.look_at(target)
                     for target, (x, y) in zip(red_objs, product([2, -2], repeat=2))
                 ],
-
                 ml(
                     box_style,
                     style(
@@ -428,7 +437,6 @@ class TestRuleBasedLayoutSolver(BaseCADTest):
                 | rl.gravity(Pos(X=3, Y=3))
                 | rl.transform(rx=0)
                 | rl.look_along(Axis.X),
-
                 ml(
                     box_style,
                     style(
@@ -501,45 +509,44 @@ class TestRuleBasedLayoutSolver(BaseCADTest):
                             self.box_style,
                             style(background_mat=mat.red),
                         ),
-                        tag="red"
+                        tag="red",
                     ),
                     rl.object(
                         ml(
                             self.box_style,
                             style(background_mat=mat.blue),
                         ),
-                        tag=["blue", "shared_tag"]
+                        tag=["blue", "shared_tag"],
                     ),
-                    tag="red_blue"
+                    tag="red_blue",
                 ),
                 rl.object(
                     ml(
                         self.box_style,
                         style(background_mat=mat.green),
                     ),
-                    tag=["green", "shared_tag"]
+                    tag=["green", "shared_tag"],
                 ),
-                
                 # Step 2: Apply precise transform rules using selectors, scoped roots, and tags
                 # Select by direct tag string matching
                 rl.tagged("red") | rl.transform(x=1),
-                
                 # Use a specific root element to restrict the tag search scope
                 rl.root(red_blue).tagged("shared_tag") | rl.transform(x=-1),
-                
                 # Nest a tag-based root query inside another scoped root lookup
-                rl.root(rl.tagged("red_blue")).tagged("shared_tag") | rl.transform(z=-0.1),
-                
+                rl.root(rl.tagged("red_blue")).tagged("shared_tag")
+                | rl.transform(z=-0.1),
                 # Chain sequential root scopes and subtract specific tags using untagged filtering
-                rl.root(rl.root(rl.tagged("red_blue")).tagged("red")).untagged("blue") | rl.transform(z=0.1),
-                
+                rl.root(rl.root(rl.tagged("red_blue")).tagged("red")).untagged("blue")
+                | rl.transform(z=0.1),
                 # Apply procedural transformations down across immediate children and deep physical leaves
                 rl.tagged("red_blue")
-                    | rl.transform(rz=45).on_each() # Apply to the groups named "red_blue" (there is the only ONE group)
-                    | rl.transform(rz=45).on_deep_physical(), # Apply to all physical children (red, blue) of the groups "red_blue"
-                
+                | rl.transform(
+                    rz=45
+                ).on_each()  # Apply to the groups named "red_blue" (there is the only ONE group)
+                | rl.transform(
+                    rz=45
+                ).on_deep_physical(),  # Apply to all physical children (red, blue) of the groups "red_blue"
                 rl.tagged("green") | rl.transform(sx=2),
-                
                 # Combine systemic tags with untagged criteria to filter exclusive physical objects (rl.object)
                 rl.tagged(rl.TAG_OBJECT).untagged("green") | rl.transform(sy=2),
             ).resolve()

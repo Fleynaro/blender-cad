@@ -108,8 +108,26 @@ class TestMLStandardFlowNoText(BaseCADTest):
             ml(
                 style(width=10, padding=0.5, background_mat=mat.blue),
                 ml(style(width=2, height=1, margin=1, background_mat=mat.red)),
-                ml(style(width=2, height=1, margin_tb=0.5, margin_lr=1, background_mat=mat.yellow)),
-                ml(style(width=2, height=1, margin_top=0.2, margin_right=0.4, margin_bottom=0.6, margin_left=0.8, background_mat=mat.green)),
+                ml(
+                    style(
+                        width=2,
+                        height=1,
+                        margin_tb=0.5,
+                        margin_lr=1,
+                        background_mat=mat.yellow,
+                    )
+                ),
+                ml(
+                    style(
+                        width=2,
+                        height=1,
+                        margin_top=0.2,
+                        margin_right=0.4,
+                        margin_bottom=0.6,
+                        margin_left=0.8,
+                        background_mat=mat.green,
+                    )
+                ),
             ).build()
 
         self.assertPart(
@@ -164,7 +182,7 @@ class TestMLStandardFlowNoText(BaseCADTest):
             "test_absolute_position_with_anchor",
             use_materials=True,
         )
-    
+
     def test_nested_opacity_multiplication(self):
         """Verify that nested opacity values multiply correctly through the hierarchy."""
         with BuildPart() as result:
@@ -245,7 +263,7 @@ class TestMLStandardFlowNoText(BaseCADTest):
                 ),
                 c,
                 b,
-                a
+                a,
             ).build()
 
         self.assertPart(
@@ -261,8 +279,14 @@ class TestMLStandardFlowNoText(BaseCADTest):
             ml(
                 style.square(size=7, mat=mat.green),
                 ml(style.circle(radius=3, mat=mat.red), style.absolute_center()),
-                ml(style.circle(radius=2, mat=mat.blue), style.absolute_center(z_index=1)),
-                ml(style.circle(radius=1, mat=mat.red), style.absolute_center(z_index=2)),
+                ml(
+                    style.circle(radius=2, mat=mat.blue),
+                    style.absolute_center(z_index=1),
+                ),
+                ml(
+                    style.circle(radius=1, mat=mat.red),
+                    style.absolute_center(z_index=2),
+                ),
             ).build()
 
         self.assertPart(
@@ -276,40 +300,24 @@ class TestMLStandardFlowNoText(BaseCADTest):
         """Verify that relative positioning offsets move elements without affecting flow."""
         with BuildPart() as result:
             ml(
-                style(
-                    width=8,
-                    background_mat=mat.blue,
-                    font_size=0.5
-                ),
+                style(width=8, background_mat=mat.blue, font_size=0.5),
                 style.align_center(),
                 # Normal position
                 ml(
                     style.circle(radius=1, mat=mat.red),
                 ),
                 # Shifted right and top
-                ml(
-                    style.circle(radius=1, mat=mat.red),
-                    style(right=1, top=1)
-                ),
+                ml(style.circle(radius=1, mat=mat.red), style(right=1, top=1)),
                 # Normal position
                 ml(
                     style.circle(radius=1, mat=mat.red),
                 ),
                 # Small shift left
-                ml(
-                    style.circle(radius=1, mat=mat.red),
-                    style(left=0.2)
-                ),
+                ml(style.circle(radius=1, mat=mat.red), style(left=0.2)),
                 # Shifted up using bottom offset
-                ml(
-                    style.circle(radius=1, mat=mat.red),
-                    style(bottom=0.5)
-                ),
+                ml(style.circle(radius=1, mat=mat.red), style(bottom=0.5)),
                 # Larger shift up using bottom offset
-                ml(
-                    style.circle(radius=1, mat=mat.red),
-                    style(bottom=1)
-                ),
+                ml(style.circle(radius=1, mat=mat.red), style(bottom=1)),
                 "hello, world!",
             ).build()
 
@@ -319,14 +327,14 @@ class TestMLStandardFlowNoText(BaseCADTest):
             "test_relative_position_offsets",
             use_materials=True,
         )
-    
+
     def test_part_3d_integration_and_transformation(self):
         """Verify that 3D parts are correctly integrated, styled, and transformed within layout."""
         with BuildPart() as result:
             # Create a source cylinder in private mode
             with BuildPart(mode=Mode.PRIVATE) as cylinder:
                 Cylinder(radius=1, height=2)
-                
+
             ml(
                 style(
                     width=6,
@@ -337,17 +345,14 @@ class TestMLStandardFlowNoText(BaseCADTest):
                     justify_content="center",
                     align_items="center",
                 ),
-                ml.from_part(
-                    cylinder, 
-                    style(adapt_transform=True)
-                ),
+                ml.from_part(cylinder, style(adapt_transform=True)),
                 ml(
                     style(background_mat=mat.green),
                     ml.from_part(
-                        cylinder, 
-                        style(transform=Rot(Z=45) * Scale(0.5), adapt_transform=True)
-                    )
-                )
+                        cylinder,
+                        style(transform=Rot(Z=45) * Scale(0.5), adapt_transform=True),
+                    ),
+                ),
             ).build()
 
         self.assertPart(
@@ -375,7 +380,7 @@ class TestMLStandardFlowNoText(BaseCADTest):
                         align_y="end",
                         background_mat=mat.red,
                         # Pivot point is shifted by Origin before applying rotation
-                        transform=Origin(X=1, Y=1) * Rot(Z=45)
+                        transform=Origin(X=1, Y=1) * Rot(Z=45),
                     ),
                     # Small marker to visualize the transformed coordinate system
                     ml(style(width=0.1, height=0.1, background_mat=mat.yellow)),
@@ -427,15 +432,14 @@ class TestMLStandardFlowNoText(BaseCADTest):
                     width=4,
                     height=4,
                     background_mat=mat.blue,
-                    dissolve=0.0 # to stabilize hash of the result part
+                    dissolve=0.0,  # to stabilize hash of the result part
                 ),
                 # Target Container: A centered circle that acts as an overflow mask
                 ml(
                     style.circle(radius=1, mat=mat.red),
                     style.absolute_center(),
                     style(border_mat=mat.yellow, border_width=0.1),
-                    style(overflow="hidden"),                      # Core masking trigger
-                    
+                    style(overflow="hidden"),  # Core masking trigger
                     # Child 1: Full-width top horizontal strip
                     ml(
                         style(
@@ -453,7 +457,7 @@ class TestMLStandardFlowNoText(BaseCADTest):
                             background_mat=mat.green,
                         ),
                         style(border_mat=mat.blue, border_width=0.1),
-                    )
+                    ),
                 ),
             ).build()
 
@@ -536,7 +540,7 @@ class TestMLStandardFlowNoText(BaseCADTest):
                             background_mat=mat.red,
                         ),
                     ),
-                )
+                ),
             ).build()
 
         self.assertPart(
@@ -548,7 +552,7 @@ class TestMLStandardFlowNoText(BaseCADTest):
 
     def test_explicit_new_line_breaks(self):
         """Verify that ml.new_line() forces row breaks and structures the layout matrix correctly."""
-        
+
         with BuildPart() as result:
             box = lambda: ml(
                 style(
@@ -597,36 +601,32 @@ class TestMLStandardFlowNoText(BaseCADTest):
                     background_mat=mat.blue,
                 ),
                 style.align_center(),
-                
                 # Node 1: Red box with a margin -> Cache Entry #1
                 ml(
                     style(
                         width=1,
                         height=1,
-                        margin_right=1, # does not affect cache
+                        margin_right=1,  # does not affect cache
                         extrude=-0.5,
                         background_mat=mat.red,
                     ),
                 ),
-                
                 # Node 2: Plain red box -> Cache Entry #2
                 ml(
                     style(
                         width=1,
                         height=1,
                         extrude=-0.5,
-                        transform=Pos(Z=-0.25), # does not affect cache
+                        transform=Pos(Z=-0.25),  # does not affect cache
                         background_mat=mat.red,
                     ),
                 ),
-                
-                
                 # Node 3: Yellow box (Different material) -> Cache Entry #3
                 ml(
                     style(
                         width=1,
                         height=1,
-                        background_mat=mat.yellow, # affects cache
+                        background_mat=mat.yellow,  # affects cache
                     ),
                 ),
             )
@@ -637,9 +637,9 @@ class TestMLStandardFlowNoText(BaseCADTest):
         # Asset that the total unique geometry elements in the cache store equals exactly 4
         cache_length = len(build_ctx.part_cache)
         self.assertEqual(
-            cache_length, 
-            3 + 1, 
-            f"Cache optimization failed! Expected 4 unique entries, got {cache_length}."
+            cache_length,
+            3 + 1,
+            f"Cache optimization failed! Expected 4 unique entries, got {cache_length}.",
         )
 
         self.assertPart(
@@ -672,8 +672,12 @@ class TestMLStandardFlowNoText(BaseCADTest):
             )
             root.build()
 
-        self.assertPart(result.part, "bd56d462be603347663b3dc97a4101d43eb1ca6c1cafbf3ecdc26ae404735740", "test_generate_array_fill_mode_box", use_materials=True)
-
+        self.assertPart(
+            result.part,
+            "bd56d462be603347663b3dc97a4101d43eb1ca6c1cafbf3ecdc26ae404735740",
+            "test_generate_array_fill_mode_box",
+            use_materials=True,
+        )
 
     def test_generate_array_fill_mode_line(self):
         """2. Verify fill_mode='line' behavior where node generation halts strictly at the end of the first line."""
@@ -698,8 +702,12 @@ class TestMLStandardFlowNoText(BaseCADTest):
             )
             root.build()
 
-        self.assertPart(result.part, "d668c62b383f87b486104b6a77e7099ef3f62d3cb42468885bebc586fd56d63b", "test_generate_array_fill_mode_line", use_materials=True)
-
+        self.assertPart(
+            result.part,
+            "d668c62b383f87b486104b6a77e7099ef3f62d3cb42468885bebc586fd56d63b",
+            "test_generate_array_fill_mode_line",
+            use_materials=True,
+        )
 
     def test_generate_array_nested_matrix(self):
         """3. Verify nested generation combining 'line' columns and 'box' rows to create a grid matrix."""
@@ -716,7 +724,7 @@ class TestMLStandardFlowNoText(BaseCADTest):
                             width=1,
                             height="100%",
                             margin_left=1,
-                            background_mat=mat.red
+                            background_mat=mat.red,
                         ),
                         ml.generate_array(
                             lambda: ml(
@@ -724,7 +732,7 @@ class TestMLStandardFlowNoText(BaseCADTest):
                                     width=1,
                                     height=1,
                                     margin_top=1,
-                                    background_mat=mat.green
+                                    background_mat=mat.green,
                                 ),
                             ),
                             fill_mode="box",
@@ -735,8 +743,12 @@ class TestMLStandardFlowNoText(BaseCADTest):
             )
             root.build()
 
-        self.assertPart(result.part, "e15353787c2c44b225bf4f5cf828c7c36b9728da7a849cdfe45ec45579bc1bfd", "test_generate_array_nested_matrix", use_materials=True)
-
+        self.assertPart(
+            result.part,
+            "e15353787c2c44b225bf4f5cf828c7c36b9728da7a849cdfe45ec45579bc1bfd",
+            "test_generate_array_nested_matrix",
+            use_materials=True,
+        )
 
     def test_generate_array_dynamic_incremental_sizing(self):
         """4. Verify that generator tracks state index `i` correctly for dynamic layout item sizing and step termination."""
@@ -762,12 +774,17 @@ class TestMLStandardFlowNoText(BaseCADTest):
             )
             root.build()
 
-        self.assertPart(result.part, "c3139f7423af6bfefd8801d2779fb29c068428e2b5d2ed8647a72559a57ec1fa", "test_generate_array_dynamic_incremental_sizing", use_materials=True)
+        self.assertPart(
+            result.part,
+            "c3139f7423af6bfefd8801d2779fb29c068428e2b5d2ed8647a72559a57ec1fa",
+            "test_generate_array_dynamic_incremental_sizing",
+            use_materials=True,
+        )
 
     def test_surface_mapping_with_nested_layout_and_materials(self):
         """
-        Verify that layout elements in a loop are correctly mapped onto the 
-        cylinder's parametric surface using UV coordinates, and that nested 
+        Verify that layout elements in a loop are correctly mapped onto the
+        cylinder's parametric surface using UV coordinates, and that nested
         styles, materials, and extrusions are properly applied.
         """
         with BuildPart() as result:
@@ -781,7 +798,11 @@ class TestMLStandardFlowNoText(BaseCADTest):
                 style(
                     width=3,
                     height=1,
-                    locations=Locations(faces().cylinders_only()[0].location(uv) * Rot(X=180) * Pos(Z=0.005))
+                    locations=Locations(
+                        faces().cylinders_only()[0].location(uv)
+                        * Rot(X=180)
+                        * Pos(Z=0.005)
+                    ),
                 ),
                 [
                     # 2. Generate 5 child layout elements distributed via UV coordinates
@@ -799,10 +820,11 @@ class TestMLStandardFlowNoText(BaseCADTest):
                         ml(
                             style.circle(radius=0.2, mat=mat.yellow),
                             style.absolute_center(),
-                            style(extrude=0.1)
-                        )
-                    ) for _ in range(5)
-                ]
+                            style(extrude=0.1),
+                        ),
+                    )
+                    for _ in range(5)
+                ],
             ).build()
 
         # Verification via hash.
@@ -812,9 +834,9 @@ class TestMLStandardFlowNoText(BaseCADTest):
         # - Material assignments (Blue base, Red background, Yellow circle) are preserved.
         # - The 0.1 extrusion is correctly applied along the local face normals.
         self.assertPart(
-            result.part, 
-            "1313c6d56da3c8bb737be5193067a1f4758af13d75eeecef1aabe68433ddd473", 
-            "test_surface_mapping_with_nested_layout_and_materials"
+            result.part,
+            "1313c6d56da3c8bb737be5193067a1f4758af13d75eeecef1aabe68433ddd473",
+            "test_surface_mapping_with_nested_layout_and_materials",
         )
 
     def test_flex_layout_distribution_along_wire_path(self):
@@ -823,7 +845,7 @@ class TestMLStandardFlowNoText(BaseCADTest):
             # Step 1: Establish the base 3D solid geometry reference
             Cylinder(1, 1)
             result.mat = mat.blue
-            
+
             # Isolate the top circular wire boundary of the cylinder
             wire = wires().top()[0]
 
@@ -831,10 +853,12 @@ class TestMLStandardFlowNoText(BaseCADTest):
             ml(
                 style(
                     display="flex",
-                    justify_content="space-around",     # Evenly spaces out the 5 children along the loop
-                    width=wire.length(),               # Flat canvas matches the exact unrolled path perimeter
+                    justify_content="space-around",  # Evenly spaces out the 5 children along the loop
+                    width=wire.length(),  # Flat canvas matches the exact unrolled path perimeter
                     height=1,
-                    locations=Locations(wire.location() * Rot(X=180) * Pos(Z=0.005)) # Project slightly above cap face
+                    locations=Locations(
+                        wire.location() * Rot(X=180) * Pos(Z=0.005)
+                    ),  # Project slightly above cap face
                 ),
                 # Generate 5 compound markers to distribute around the rim
                 [
@@ -843,17 +867,18 @@ class TestMLStandardFlowNoText(BaseCADTest):
                             width=0.5,
                             height=0.5,
                             background_mat=mat.red,
-                            x_offset="-50%",           # Align local geometry origin to the tracking path center
+                            x_offset="-50%",  # Align local geometry origin to the tracking path center
                             y_offset="-10%",
                         ),
                         # Nested embossed yellow pin indicator
                         ml(
                             style.circle(radius=0.1, mat=mat.yellow),
                             style.absolute_center(),
-                            style(extrude=0.1)
-                        )
-                    ) for _ in range(5)
-                ]
+                            style(extrude=0.1),
+                        ),
+                    )
+                    for _ in range(5)
+                ],
             ).build()
 
         self.assertPart(
@@ -868,24 +893,18 @@ class TestMLStandardFlowNoText(BaseCADTest):
         with BuildPart() as result:
             # Step 1: Create the child part with a defined joint at its bottom center
             child = ml(
-                (s := style(
-                    width=0.3,
-                    height=0.3,
-                    background_mat=mat.green,
-                    extrude=1
-                )),
+                (
+                    s := style(
+                        width=0.3, height=0.3, background_mat=mat.green, extrude=1
+                    )
+                ),
                 # Register a target joint named 'bottom_center' on the child part
                 ml.joint("bottom_center", X="50%", Y="50%", Z=-s.extrude, flip=True),
             ).part
 
             # Step 2: Create the main part with a nested circular sub-element and a top joint
             main = ml(
-                style(
-                    width=4,
-                    height=4,
-                    background_mat=mat.blue,
-                    extrude=0.1
-                ),
+                style(width=4, height=4, background_mat=mat.blue, extrude=0.1),
                 ml(
                     style(
                         width="100%",
@@ -899,19 +918,21 @@ class TestMLStandardFlowNoText(BaseCADTest):
                         style(
                             extrude=0.1,
                             extrude_delete_source_faces=False,
-                            border_extrude_delete_source_faces=False
+                            border_extrude_delete_source_faces=False,
                         ),
                         # Register a matching target joint named 'top_center' on the main part
                         ml.joint("top_center", X="50%", Y="50%"),
                     ),
-                )
+                ),
             ).part
 
             # Step 3: Add the main base part to the active build context
             add(main)
-            
+
             # Step 4: Actively connect the child's joint to the main part's joint using JOIN mode
-            child.joint_by_name("bottom_center").to(main.joint_by_name("top_center"), mode=Mode.JOIN)
+            child.joint_by_name("bottom_center").to(
+                main.joint_by_name("top_center"), mode=Mode.JOIN
+            )
 
         self.assertPart(
             result.part,
@@ -926,7 +947,7 @@ class TestMLStandardFlowNoText(BaseCADTest):
             # Step 1: Define a closed 2D spline curve profile using a local curve context
             with BuildCurve() as bc:
                 Spline((0, 0, 0), (10, 0, 0), (10, 10, 0), (0, 10, 0), close=True)
-            
+
             # Step 2: Build the layout structure projecting dimensions onto the reference spline profile
             ml(
                 style(
@@ -936,18 +957,13 @@ class TestMLStandardFlowNoText(BaseCADTest):
                     background_from_curve=bc,
                     border_mat=mat.red,
                     border_width=0.1,
-                    extrude=1
+                    extrude=1,
                 ),
                 # Step 3: Embed a nested green component exactly at the center of the generated geometry
                 ml(
-                    style(
-                        width=1,
-                        height=1,
-                        background_mat=mat.green,
-                        extrude=-0.5
-                    ),
-                    style.absolute_center()
-                )
+                    style(width=1, height=1, background_mat=mat.green, extrude=-0.5),
+                    style.absolute_center(),
+                ),
             ).build()
 
         self.assertPart(
@@ -1184,13 +1200,13 @@ class TestMLStandardFlowText(BaseCADTest):
                 style(
                     font_size=1,
                     background_mat=mat.blue,
-                    mat=mat.red,                # Main text body color
-                    text_stroke_width=0.05,     # Thickness of the outline
-                    text_stroke_mat=mat.yellow, # Outline color
-                    text_extrude=0.1,           # Depth of the main text
-                    text_stroke_extrude=0.05,    # Depth of the stroke (offset for 3D effect)
+                    mat=mat.red,  # Main text body color
+                    text_stroke_width=0.05,  # Thickness of the outline
+                    text_stroke_mat=mat.yellow,  # Outline color
+                    text_extrude=0.1,  # Depth of the main text
+                    text_stroke_extrude=0.05,  # Depth of the stroke (offset for 3D effect)
                 ),
-                "Hello, world!"
+                "Hello, world!",
             ).build()
 
         self.assertPart(
@@ -1208,7 +1224,7 @@ class TestMLStandardFlowText(BaseCADTest):
                 # "Hello, world!" is clipped by its own style (overflow="hidden")
                 ml(style(height=1, overflow="hidden"), "Hello, world!"),
                 # "world" is clipped by the parent's style (root overflow="hidden")
-                ml(style(height=1), "world")
+                ml(style(height=1), "world"),
             )
             root.build()
 
@@ -1223,12 +1239,7 @@ class TestMLStandardFlowText(BaseCADTest):
         """Verify solid 3D extrusion generation via mode='extrude' with nested child shapes."""
         with BuildPart() as result:
             ml(
-                style(
-                    width=5,
-                    height=5,
-                    background_mat=mat.blue,
-                    mode='extrude'
-                ),
+                style(width=5, height=5, background_mat=mat.blue, mode="extrude"),
                 style.align_center(),
                 ml(
                     style(
@@ -1237,7 +1248,7 @@ class TestMLStandardFlowText(BaseCADTest):
                         background_mat=mat.green,
                         border_width=0.2,
                         border_mat=mat.yellow,
-                        z_index=20
+                        z_index=20,
                     ),
                     style.align_center(),
                     ml(
@@ -1251,7 +1262,7 @@ class TestMLStandardFlowText(BaseCADTest):
                                 text_stroke_width=0.02,
                             ),
                             style.align_center(),
-                            "Hello"
+                            "Hello",
                         ),
                         ml(
                             style.circle(radius=1, mat=mat.red),
@@ -1263,11 +1274,11 @@ class TestMLStandardFlowText(BaseCADTest):
                                     border_width=0.1,
                                     border_mat=mat.green,
                                     border_extrude=0.1,
-                                    extrude=0.2
-                                )
-                            )
-                        )
-                    )
+                                    extrude=0.2,
+                                ),
+                            ),
+                        ),
+                    ),
                 ),
             ).build()
 
@@ -1303,7 +1314,7 @@ class TestMLFlexFlow(BaseCADTest):
                     ),
                     ml(style(width=1, height=1, background_mat=mat.red)),
                     ml(style(width=1, height=1, margin_left=1, background_mat=mat.red)),
-                )
+                ),
             ).build()
 
         self.assertPart(
@@ -1325,7 +1336,10 @@ class TestMLFlexFlow(BaseCADTest):
                     justify_content="space-between",
                     background_mat=mat.blue,
                 ),
-                [ml(style(width=1, height=1, background_mat=mat.red)) for _ in range(4)],
+                [
+                    ml(style(width=1, height=1, background_mat=mat.red))
+                    for _ in range(4)
+                ],
             ).build()
 
         self.assertPart(
@@ -1348,7 +1362,10 @@ class TestMLFlexFlow(BaseCADTest):
                     gap=1,
                     background_mat=mat.blue,
                 ),
-                [ml(style(width=1, height=1, background_mat=mat.red)) for _ in range(3)],
+                [
+                    ml(style(width=1, height=1, background_mat=mat.red))
+                    for _ in range(3)
+                ],
             ).build()
 
         self.assertPart(
@@ -1372,7 +1389,10 @@ class TestMLFlexFlow(BaseCADTest):
                     align_items="center",
                     background_mat=mat.blue,
                 ),
-                [ml(style(width=1, height=1, background_mat=mat.red)) for _ in range(4)],
+                [
+                    ml(style(width=1, height=1, background_mat=mat.red))
+                    for _ in range(4)
+                ],
             ).build()
 
         self.assertPart(
@@ -1398,7 +1418,10 @@ class TestMLFlexFlow(BaseCADTest):
                     gap=1,
                     background_mat=mat.blue,
                 ),
-                [ml(style(width=1, height=1, background_mat=mat.red)) for _ in range(6)],
+                [
+                    ml(style(width=1, height=1, background_mat=mat.red))
+                    for _ in range(6)
+                ],
             ).build()
 
         self.assertPart(
@@ -1433,7 +1456,10 @@ class TestMLFlexFlow(BaseCADTest):
                         align_items="center",
                         background_mat=mat.red,
                     ),
-                    [ml(style(width=1, height=1, background_mat=mat.yellow)) for _ in range(3)],
+                    [
+                        ml(style(width=1, height=1, background_mat=mat.yellow))
+                        for _ in range(3)
+                    ],
                 ),
                 ml(
                     style(
@@ -1446,7 +1472,10 @@ class TestMLFlexFlow(BaseCADTest):
                         align_items="center",
                         background_mat=mat.green,
                     ),
-                    [ml(style(width=1, height=1, background_mat=mat.yellow)) for _ in range(3)],
+                    [
+                        ml(style(width=1, height=1, background_mat=mat.yellow))
+                        for _ in range(3)
+                    ],
                 ),
             ).build()
 
@@ -1484,7 +1513,7 @@ class TestMLFlexFlow(BaseCADTest):
             "test_stretch_alignment_with_mixed_child_sizes",
             use_materials=True,
         )
-    
+
     def test_column_stretch_alignment_with_partial_widths(self):
         """Verify stretch alignment in a column flex layout with partially sized children."""
         with BuildPart() as result:
@@ -1578,7 +1607,10 @@ class TestMLFlexFlow(BaseCADTest):
                     text_align="center",
                 ),
                 ml(style(width=6, background_mat=mat.red)),
-                ml(style(flex_grow=1, background_mat=mat.green, align_y="center"), "Hello!"),
+                ml(
+                    style(flex_grow=1, background_mat=mat.green, align_y="center"),
+                    "Hello!",
+                ),
             ).build()
 
         self.assertPart(
@@ -1599,28 +1631,26 @@ class TestMLFlexFlow(BaseCADTest):
                 ),
                 style.flex_center(),
                 style(
-                    flex_wrap="wrap", 
-                    align_items="baseline", 
-                    align_content="center", 
-                    gap=0.1
+                    flex_wrap="wrap",
+                    align_items="baseline",
+                    align_content="center",
+                    gap=0.1,
                 ),
                 # Row 1: Red circles
                 ml(style.circle(radius=1, mat=mat.red)),
                 ml(
                     style.circle(radius=1, mat=mat.red),
-                    style(right=1, top=1), # Shifted out of flow
+                    style(right=1, top=1),  # Shifted out of flow
                 ),
                 ml(style.circle(radius=1, mat=mat.red)),
                 ml(style.circle(radius=1, mat=mat.red)),
-                
                 # Row 2: Yellow circles
                 ml(style.circle(radius=1, mat=mat.yellow)),
                 ml(
                     style.circle(radius=1, mat=mat.yellow),
-                    style(right=1, bottom=2, z_index=1) # Dramatic upward shift
+                    style(right=1, bottom=2, z_index=1),  # Dramatic upward shift
                 ),
                 ml(style.circle(radius=1, mat=mat.yellow)),
-                
                 # Row 3: Green circles
                 ml(style.circle(radius=1, mat=mat.green)),
                 ml(style.circle(radius=1, mat=mat.green)),
@@ -1787,13 +1817,11 @@ class TestMLBorder(BaseCADTest):
                     height=4,
                     border_width=0.12,
                     border_style="solid",
-
                     # Concave corners.
                     border_radius_tl="-35%",
                     border_radius_tr="-15%",
                     border_radius_bl="-25%",
                     border_radius_br="-45%",
-
                     border_mat=mat.green,
                     background_mat=mat.red,
                 ),
@@ -1814,7 +1842,7 @@ class TestMLBorder(BaseCADTest):
                     width=5,
                     height=3,
                     background_mat=mat.blue,
-                    dissolve=0.0 # to stabilize hash of the result part
+                    dissolve=0.0,  # to stabilize hash of the result part
                 ),
                 style.align_center(),
                 ml(
@@ -1824,11 +1852,11 @@ class TestMLBorder(BaseCADTest):
                         background_mat=mat.red,
                         border_width=0.1,
                         border_mat=mat.yellow,
-                        extrude=0.5,            # Body depth
-                        border_extrude=1,       # Border sticks out further
-                        border_style="double",   # Double line border rendering
-                        top_scale=0.5,          # Trapezoidal deformation
-                        border_radius="20%"     # Rounded warped corners
+                        extrude=0.5,  # Body depth
+                        border_extrude=1,  # Border sticks out further
+                        border_style="double",  # Double line border rendering
+                        top_scale=0.5,  # Trapezoidal deformation
+                        border_radius="20%",  # Rounded warped corners
                     )
                 ),
             ).build()
@@ -1853,16 +1881,16 @@ class TestMLBorder(BaseCADTest):
                     style(
                         border_width=0.1,
                         border_style="dashed",
-                        border_offset=0.1,       # Expands the border bounds outward from the element
+                        border_offset=0.1,  # Expands the border bounds outward from the element
                         border_dash_length=0.2,  # Length of individual dashes
-                        border_step_scale=0.2,   # Distance or scaling between dashes
-                        border_z_index=10,     # Lifts the border slightly forward on the Z-axis
+                        border_step_scale=0.2,  # Distance or scaling between dashes
+                        border_z_index=10,  # Lifts the border slightly forward on the Z-axis
                         border_mat=mat.yellow,
                     ),
                     ml(
                         style.circle(radius=1, mat=mat.red),
                     ),
-                )
+                ),
             ).build()
 
         self.assertPart(
@@ -1879,7 +1907,7 @@ class TestMLBorder(BaseCADTest):
                 style(
                     width=5,
                     height=4,
-                    padding=0.1, # need this to prevent border from being sticked outwards
+                    padding=0.1,  # need this to prevent border from being sticked outwards
                     background_mat=mat.blue,
                 ),
                 style.align_center(),
@@ -1893,10 +1921,7 @@ class TestMLBorder(BaseCADTest):
                         style.circle(radius=1, mat=mat.red),
                     ),
                     # Right Red Circle (shifted left by 1 unit via right offset)
-                    ml(
-                        style.circle(radius=1, mat=mat.red),
-                        style(right=1)
-                    ),
+                    ml(style.circle(radius=1, mat=mat.red), style(right=1)),
                     # Vertical Center Strip (spanning 100% height of parent container bounds)
                     ml(
                         style.absolute_center(),
@@ -1907,7 +1932,7 @@ class TestMLBorder(BaseCADTest):
                         style.absolute_center(),
                         style(height=0.3, width="100%", background_mat=mat.red),
                     ),
-                )
+                ),
             ).build()
 
         self.assertPart(
@@ -1934,7 +1959,7 @@ class TestMLBorder(BaseCADTest):
                         background_mat=mat.blue,
                         border_mat=mat.yellow,
                         border_width=0.2,
-                        border_offset=0.2
+                        border_offset=0.2,
                     ),
                 ),
                 # Case 2: Standard Box Model Border (Included in measurements)
@@ -1955,9 +1980,9 @@ class TestMLBorder(BaseCADTest):
                         background_mat=mat.red,
                         border_mat=mat.yellow,
                         border_width=0.05,
-                        border_in_measure=False  # Border bleeds out without shifting layout flow
+                        border_in_measure=False,  # Border bleeds out without shifting layout flow
                     ),
-                )
+                ),
             ).build()
 
         self.assertPart(
@@ -2007,9 +2032,9 @@ class TestMLBorder(BaseCADTest):
                         border_radius="10%",
                         border_mat=mat.red,
                         border_width=0.5,
-                        border_extrude=-0.5  # Directly carves a 0.5-deep trench under the border path
+                        border_extrude=-0.5,  # Directly carves a 0.5-deep trench under the border path
                     ),
-                )
+                ),
             ).build()
 
         self.assertPart(
@@ -2030,7 +2055,7 @@ class TestMLBorder(BaseCADTest):
                     border_width=0.1,
                     border_mat=mat.blue,
                     border_radius="10%",
-                    border_around_background=True
+                    border_around_background=True,
                 ),
                 style.align_center(),
                 ml(
@@ -2041,7 +2066,7 @@ class TestMLBorder(BaseCADTest):
                         border_width=0.1,
                         border_mat=mat.green,
                         border_radius="10%",
-                        border_around_background=True
+                        border_around_background=True,
                     ),
                     style.align_center(),
                     ml(
@@ -2052,7 +2077,7 @@ class TestMLBorder(BaseCADTest):
                             border_width=0.1,
                             border_mat=mat.yellow,
                             border_radius="10%",
-                            border_around_background=True
+                            border_around_background=True,
                         ),
                         style.align_center(),
                         # Core Content: Solid red center block occupying half the inner yellow frame space
@@ -2062,9 +2087,9 @@ class TestMLBorder(BaseCADTest):
                                 height="50%",
                                 background_mat=mat.red,
                             ),
-                        )
-                    )
-                )
+                        ),
+                    ),
+                ),
             ).build()
 
         self.assertPart(
@@ -2092,7 +2117,6 @@ class TestMLBorder(BaseCADTest):
             "test_extreme_border_radius_bottom_left_saturation",
             use_materials=True,
         )
-
 
     def test_over_saturated_side_radius_clamping(self):
         """Verify that border_radius_left='200%' on a rectangular profile clamps smoothly to the maximum physical limit."""
@@ -2173,7 +2197,8 @@ class TestMLBorder(BaseCADTest):
                                 margin_left=2,
                                 extrude=0.1,
                             )
-                        ) for _ in range(10)
+                        )
+                        for _ in range(10)
                     ],
                 ),
                 ml(
@@ -2202,10 +2227,7 @@ class TestMLBorder(BaseCADTest):
                     extrude=1,
                 ),
                 style.border_ml(
-                    style(
-                        display="flex",
-                        justify_content="space-around"
-                    ),
+                    style(display="flex", justify_content="space-around"),
                     [
                         ml(
                             style(
@@ -2221,7 +2243,8 @@ class TestMLBorder(BaseCADTest):
                                 style.absolute_center(),
                                 style(extrude=0.4),
                             ),
-                        ) for _ in range(5)
+                        )
+                        for _ in range(5)
                     ],
                 ),
             ).build()
@@ -2266,7 +2289,8 @@ class TestMLBorder(BaseCADTest):
                                     style.absolute_center(),
                                     style(extrude=0.1),
                                 ),
-                            ) for _ in range(3)
+                            )
+                            for _ in range(3)
                         ],
                     )
                 ),
@@ -2311,7 +2335,8 @@ class TestMLBorder(BaseCADTest):
                                 height=1,
                                 background_mat=mat.red,
                             ),
-                        ) for _ in range(3)
+                        )
+                        for _ in range(3)
                     ],
                     selector=lambda: c.tagged("C"),
                 ),
@@ -2346,7 +2371,7 @@ class TestMLBorder(BaseCADTest):
                     selector=lambda: c.tagged("B").untagged(Curve.TAG_POINT_LAST),
                 ),
             ).build()
-            
+
             # Step 5: Append the reference path curve skeleton to the final part representation
             add(c)
 
@@ -2456,10 +2481,10 @@ class TestMLThreeDOperations(BaseCADTest):
                                     right_scale=0.5,
                                     background_mat=mat.red,
                                 ),
-                            )
+                            ),
                         ),
                         side="right",
-                        flip=False
+                        flip=False,
                     ),
                     # Block 2: Green box with left-side inverted mirror reflection
                     ml.mirror(
@@ -2480,14 +2505,14 @@ class TestMLThreeDOperations(BaseCADTest):
                                     right_scale=0.5,
                                     background_mat=mat.red,
                                 ),
-                            )
+                            ),
                         ),
                         side="left",
-                        flip=True
-                    )
+                        flip=True,
+                    ),
                 ),
                 side="bottom",
-                flip=True
+                flip=True,
             ).build()
 
         self.assertPart(
@@ -2513,14 +2538,14 @@ class TestMLThreeDOperations(BaseCADTest):
                         style(
                             width=1,
                             height=1,
-                            extrude=-0.1,        # Subtractive cutter property
-                            right_scale=0.5,     # Tapered geometry modifier
+                            extrude=-0.1,  # Subtractive cutter property
+                            right_scale=0.5,  # Tapered geometry modifier
                             background_mat=mat.red,
                         ),
                     ),
                     side="bottom",
-                    offset=0.1
-                )
+                    offset=0.1,
+                ),
             ).build()
 
         self.assertPart(
@@ -2555,26 +2580,25 @@ class TestMLThreeDOperations(BaseCADTest):
                             width=4,
                             height=4,
                             background_mat=mat.red,
-                            extrude=-0.5,       # CSG Subtraction / Hole cutting operation
-                            border_radius="10%"
+                            extrude=-0.5,  # CSG Subtraction / Hole cutting operation
+                            border_radius="10%",
                         ),
                         style.align_center(),
                         # Core elements sitting inside the opening
                         ml(
                             style(
-                                width=3,
-                                height=3,
-                                background_mat=mat.green,
-                                mat=mat.red
+                                width=3, height=3, background_mat=mat.green, mat=mat.red
                             ),
                             # Deepest child: Cuts an additional circular hole through layers
                             ml(
                                 style.circle(radius=1, mat=mat.yellow),
                                 style.absolute_center(),
                                 style.align_center(),
-                                style(extrude=-0.5, font_size=0.5),  # Secondary cutout pass
-                                "Hello"
-                            )
+                                style(
+                                    extrude=-0.5, font_size=0.5
+                                ),  # Secondary cutout pass
+                                "Hello",
+                            ),
                         ),
                     ),
                 ),
@@ -2603,8 +2627,8 @@ class TestMLThreeDOperations(BaseCADTest):
                         width=5,
                         height=5,
                         background_mat=mat.red,
-                        extrude=-0.5,       # Recesses the geometry backward
-                        border_radius="10%"
+                        extrude=-0.5,  # Recesses the geometry backward
+                        border_radius="10%",
                     ),
                     style.align_center(),
                     # Step 2: Push a 4x4 inner core back forward to the surface level
@@ -2613,11 +2637,11 @@ class TestMLThreeDOperations(BaseCADTest):
                             width=4,
                             height=4,
                             background_mat=mat.blue,
-                            extrude=0.5,        # Extrudes forward inside the cutout
-                            border_radius="10%"
+                            extrude=0.5,  # Extrudes forward inside the cutout
+                            border_radius="10%",
                         ),
-                    )
-                )
+                    ),
+                ),
             ).build()
 
         self.assertPart(
@@ -2643,13 +2667,13 @@ class TestMLThreeDOperations(BaseCADTest):
                         width=5,
                         height=5,
                         background_mat=mat.green,
-                        mat=mat.red,            # Material color assigned to the text/cutout geometry
+                        mat=mat.red,  # Material color assigned to the text/cutout geometry
                         font_size=2,
-                        text_extrude=-0.5       # Directly carves text shapes 0.5 units deep into the green plate
+                        text_extrude=-0.5,  # Directly carves text shapes 0.5 units deep into the green plate
                     ),
                     style.align_center(),
-                    "Hello"
-                )
+                    "Hello",
+                ),
             ).build()
 
         self.assertPart(
@@ -2676,11 +2700,11 @@ class TestMLThreeDOperations(BaseCADTest):
                         height=5,
                         background_mat=mat.green,
                         extrude=-1,
-                        border_radius="30%"
+                        border_radius="30%",
                     ),
                     # Modulates the bottom edge's extrusion depth ratio to 0.2
-                    style.prop_box_extrude(bottom=0.2)
-                )
+                    style.prop_box_extrude(bottom=0.2),
+                ),
             ).build()
 
         self.assertPart(
@@ -2713,13 +2737,13 @@ class TestMLThreeDOperations(BaseCADTest):
                     style.prop_box_extrude(left=0.2),
                     # Applies top beveling configurations
                     style.bevel_box_top(lr=0.5),
-                )
+                ),
             ).build()
 
         self.assertPart(
             result.part,
             "fd7126019a2fee25a4d855e3681758aea7dbe6023d9a0f2b459a4c3cc90bee79",
-            "test_proportional_box_extrude_with_bevel"
+            "test_proportional_box_extrude_with_bevel",
         )
 
     def test_advanced_extrusion_transforms_and_face_retention(self):
@@ -2741,19 +2765,17 @@ class TestMLThreeDOperations(BaseCADTest):
                         border_width=0.1,
                         border_mat=mat.yellow,
                         border_radius="10%",
-                        
                         # Core Body Extrusion Settings
                         extrude=-2,
                         extrude_transform=Scale(XY=0.5) * Pos(XY=2.5),
-                        extrude_delete_source_faces=False,     # Retains native cap geometry at Z=0
-                        top_scale=0.5,                         # Applies a linear taper/draft angle
-                        
+                        extrude_delete_source_faces=False,  # Retains native cap geometry at Z=0
+                        top_scale=0.5,  # Applies a linear taper/draft angle
                         # Border Cutout Extrusion Settings
                         border_extrude=-3,
                         border_extrude_delete_source_faces=False,  # Retains boundary profile geometry at Z=0
                         border_extrude_transform=Scale(XY=0.5) * Pos(XY=2.5),
                     ),
-                )
+                ),
             ).build()
 
         self.assertPart(
@@ -2771,16 +2793,19 @@ class TestMLThreeDOperations(BaseCADTest):
                     width=6,
                     height=3,
                     background_mat=mat.blue,
-                    mode="add",         # Forces 2D Boolean Union merging
-                    dissolve=0.0 # to stabilize hash of the result part
+                    mode="add",  # Forces 2D Boolean Union merging
+                    dissolve=0.0,  # to stabilize hash of the result part
                 ),
                 style.flex_center(),
-                
                 # 1. Left wing element with rounded corners
                 ml(
-                    style(width=1, height=0.5, border_radius_left="50%", background_mat=mat.red),
+                    style(
+                        width=1,
+                        height=0.5,
+                        border_radius_left="50%",
+                        background_mat=mat.red,
+                    ),
                 ),
-                
                 # 2. Central complex circular assembly (nested booleans)
                 ml(
                     style.circle(radius=1, mat=mat.red),
@@ -2790,18 +2815,31 @@ class TestMLThreeDOperations(BaseCADTest):
                         style.circle(radius=0.7, mat=mat.yellow),
                         style.flex_center(),
                         ml(
-                            style(height=0.2, width="100%", background_mat=mat.red + mat.Name("red"))
-                        )
-                    )
+                            style(
+                                height=0.2,
+                                width="100%",
+                                background_mat=mat.red + mat.Name("red"),
+                            )
+                        ),
+                    ),
                 ),
-                
                 # 3. Right wing element with text engraving baked into the fused shape
                 ml(
-                    style(width=2, height=1, border_radius_right="50%", background_mat=mat.red),
+                    style(
+                        width=2,
+                        height=1,
+                        border_radius_right="50%",
+                        background_mat=mat.red,
+                    ),
                     style(right=0.5),
-                    style(font_size=0.5, text_align="right", align_y="center", mat=mat.yellow),
-                    "Hello"
-                )
+                    style(
+                        font_size=0.5,
+                        text_align="right",
+                        align_y="center",
+                        mat=mat.yellow,
+                    ),
+                    "Hello",
+                ),
             ).build()
 
         self.assertPart(
@@ -2813,7 +2851,7 @@ class TestMLThreeDOperations(BaseCADTest):
 
     def test_component_reusability_with_bbox_joints(self):
         """Verify that 3D components can be generated once, tagged with joints, and instanced repeatedly."""
-        
+
         def box_component():
             """Generates a closed, 4-segmented 3D hollow loop anchored to its X-axis bounding box joint."""
             return chain(
@@ -2832,8 +2870,10 @@ class TestMLThreeDOperations(BaseCADTest):
             ).bbox_joint(Axis.X)
 
         with BuildPart() as result:
-            box = box_component()  # Generate the component asset and its anchor reference
-            
+            box = (
+                box_component()
+            )  # Generate the component asset and its anchor reference
+
             ml(
                 style(
                     width=6,
@@ -2841,21 +2881,12 @@ class TestMLThreeDOperations(BaseCADTest):
                     background_mat=mat.blue,
                 ),
                 style.align_center(),
-                
                 # Instance 1: Placed at the default layout origin
                 ml(box),
-                
                 # Instance 2: Shifted horizontally via layout flow margins
-                ml(
-                    style(margin_left=1), 
-                    box
-                ),
-                
+                ml(style(margin_left=1), box),
                 # Instance 3: Shifted and locally rotated 45 degrees along the Z-axis
-                ml(
-                    style(margin_left=1, transform=Rot(Z=45)), 
-                    box
-                )
+                ml(style(margin_left=1, transform=Rot(Z=45)), box),
             ).build()
 
         self.assertPart(
@@ -2884,18 +2915,13 @@ class TestMLThreeDOperations(BaseCADTest):
                         bend_angle=180,
                         bend_segments=16,
                         extrude=0.2,
-                        extrude_delete_source_faces=False
+                        extrude_delete_source_faces=False,
                     ),
                     style.align_center(),
                     ml(
-                        style(
-                            width=2,
-                            height=1,
-                            background_mat=mat.yellow,
-                            extrude=0.1
-                        )
-                    )
-                )
+                        style(width=2, height=1, background_mat=mat.yellow, extrude=0.1)
+                    ),
+                ),
             ).build()
 
         self.assertPart(
@@ -2921,13 +2947,7 @@ class TestMLThreeDOperations(BaseCADTest):
                 ),
                 style.align_center(),
                 # Step 2: Embed a matching flexible hole component that follows the exact curved profile smoothly
-                ml.hole(
-                    width=2,
-                    height=1,
-                    mat=mat.yellow,
-                    depth=0.2,
-                    cuts=16
-                ),
+                ml.hole(width=2, height=1, mat=mat.yellow, depth=0.2, cuts=16),
             ).build()
 
         self.assertPart(
@@ -2937,18 +2957,13 @@ class TestMLThreeDOperations(BaseCADTest):
             use_materials=True,
         )
 
-
     def test_tag_subtraction_and_dependent_scaling(self):
         """Verify that subtracting child faces from a parent layout component allows targeted scaling that deforms the connected geometry into a frustum."""
         with BuildPart() as result:
             # Step 1: Build the nested markup layout tracking parent and child entities via tags
             ml(
                 style(
-                    width=1,
-                    height=1,
-                    background_mat=mat.red,
-                    extrude=1,
-                    tag="parent"
+                    width=1, height=1, background_mat=mat.red, extrude=1, tag="parent"
                 ),
                 style.align_center(),
                 ml(
@@ -2958,14 +2973,14 @@ class TestMLThreeDOperations(BaseCADTest):
                         background_mat=mat.blue,
                         extrude=1,
                         tag="child",
-                        z_index=-1 # to merge shared vertices
+                        z_index=-1,  # to merge shared vertices
                     ),
-                )
+                ),
             ).build(remove_double_verts=True)
-            
+
             # Step 2: Isolate the exclusive parent base faces by removing elements shared with or tagged as child
             parent_base = faces().split().tagged("parent").untagged("child")
-            
+
             # Step 3: Scale the isolated base, pulling the shared vertices to generate a truncated pyramid (frustum)
             transform(parent_base, op=Origin(XY=0.5) * Scale(XY=1.5))
 
@@ -2994,7 +3009,7 @@ class TestRuleBasedLayout(BaseCADTest):
                     height=6,
                     padding=1,
                     background_mat=mat.green,
-                    background_from_curve=bc
+                    background_from_curve=bc,
                 ),
                 style.border_ml(
                     style(
@@ -3009,9 +3024,10 @@ class TestRuleBasedLayout(BaseCADTest):
                                 background_mat=mat.red,
                                 extrude=0.5,
                                 x_offset="-50%",
-                                y_offset="-100%"
+                                y_offset="-100%",
                             )
-                        ) for _ in range(3)
+                        )
+                        for _ in range(3)
                     ],
                 ),
                 ml(
@@ -3026,7 +3042,7 @@ class TestRuleBasedLayout(BaseCADTest):
                         display="flex",
                         justify_content="space-around",
                         align_items="center",
-                        extrude=0.5
+                        extrude=0.5,
                     ),
                     ml(
                         style(
@@ -3063,7 +3079,7 @@ class TestRuleBasedLayout(BaseCADTest):
                                 transform=Rot(X=10, Y=-10, Z=10) * Scale(Y=2),
                             ),
                         ),
-                        style(transform=Pos(Z=-1) * Rot(X=50, Z=-30) * Scale(0.5))
+                        style(transform=Pos(Z=-1) * Rot(X=50, Z=-30) * Scale(0.5)),
                     ),
                 ),
             )
@@ -3104,9 +3120,9 @@ class TestRuleBasedLayout(BaseCADTest):
                         font_size=1.8,
                         text_stroke_width=0.2,
                         text_stroke_mat=mat.green,
-                        text_stroke_extrude=0.25
+                        text_stroke_extrude=0.25,
                     ),
-                    "two!"
+                    "two!",
                 ),
                 # Text node with an identical font scale but featuring a negative stroke cut extrusion
                 ml(
@@ -3114,9 +3130,9 @@ class TestRuleBasedLayout(BaseCADTest):
                         font_size=1.8,
                         text_stroke_width=0.1,
                         text_stroke_mat=mat.green,
-                        text_stroke_extrude=-0.5
+                        text_stroke_extrude=-0.5,
                     ),
-                    "three..."
+                    "three...",
                 ),
                 # Small trailing marker node with tight left-right inner padding bounds
                 ml(style(font_size=0.5, padding_lr=0.15), "4"),
@@ -3124,7 +3140,7 @@ class TestRuleBasedLayout(BaseCADTest):
 
             # Step 2: Build the core geometry structure including the extruded text mesh data
             obj.build()
-            
+
             # Step 3: Compute and append the bounding box evaluation overlay using a transparent material shader
             with BuildPart(mode=Mode.JOIN):
                 obj.build(evaluate=True)
@@ -3341,8 +3357,7 @@ class TestRuleBasedLayout(BaseCADTest):
                         top_scale=0.2,
                         extrude=0.5,
                         transform=lambda: Pos(
-                            X=ml.dof_get(max=10),
-                            Y=ml.dof_get(max=5)
+                            X=ml.dof_get(max=10), Y=ml.dof_get(max=5)
                         ),
                     ),
                     rl.gravity(Pos(X=8, Y=3)),
@@ -3424,7 +3439,7 @@ class TestRuleBasedLayout(BaseCADTest):
                     extrude=1,
                     top_scale=0.5,
                     transform=Pos(X=2) * Rot(Z=45),
-                    show_eval_box=mat.yellow
+                    show_eval_box=mat.yellow,
                 ),
                 rl.inside().on_each(),
                 ml(
@@ -3436,9 +3451,11 @@ class TestRuleBasedLayout(BaseCADTest):
                         height=1,
                         background_mat=mat.green,
                         extrude=-0.5,
-                        show_eval_box=mat.red
+                        show_eval_box=mat.red,
                     ),
-                    rl.gravity(Pos(X=100)),  # Pull outwards to challenge inside constraint
+                    rl.gravity(
+                        Pos(X=100)
+                    ),  # Pull outwards to challenge inside constraint
                 ),
             ).build()
 
@@ -3507,7 +3524,9 @@ class TestRuleBasedLayout(BaseCADTest):
                     style.absolute_center(),
                     style(
                         width=ml.dof_p(),
-                        height=lambda n: n.width,  # Maintain 1:1 square aspect ratio based on width DOF
+                        height=lambda n: (
+                            n.width
+                        ),  # Maintain 1:1 square aspect ratio based on width DOF
                         background_mat=mat.green,
                         extrude=-0.5,
                     ),
@@ -3580,9 +3599,7 @@ class TestRuleBasedLayout(BaseCADTest):
                     ),
                 ),
                 side="top",
-                style=style(
-                    transform=Pos(Z=-1) * Rot(X=20, Y=20, Z=45)
-                ),
+                style=style(transform=Pos(Z=-1) * Rot(X=20, Y=20, Z=45)),
             )
 
             # Step 3: Execute root solver first, then secondary solver for sub-builder border elements
@@ -3617,8 +3634,7 @@ class TestMLCombinedCases(BaseCADTest):
             )
             # Helper for circular blocks with enforced aspect ratio.
             circle = lambda r: (
-                style(width=r, height=r)
-                + style(border_radius="50%", aspect_ratio=1)
+                style(width=r, height=r) + style(border_radius="50%", aspect_ratio=1)
             )
 
             # Root ML context.
@@ -3715,13 +3731,39 @@ class TestMLCombinedCases(BaseCADTest):
                         margin_right=0.2,
                         border_radius="50%",
                         background_mat=mat.green,
-                        extrude=0.1
+                        extrude=0.1,
                     )
-                    ml(style(width="100%", height=0.1, position="absolute", top="50%", left="50%", background_mat=mat.red)),
-                    ml(style(width=0.1, height="100%", position="absolute", top="50%", left="50%", background_mat=mat.red)),
+                    (
+                        ml(
+                            style(
+                                width="100%",
+                                height=0.1,
+                                position="absolute",
+                                top="50%",
+                                left="50%",
+                                background_mat=mat.red,
+                            )
+                        ),
+                    )
+                    (
+                        ml(
+                            style(
+                                width=0.1,
+                                height="100%",
+                                position="absolute",
+                                top="50%",
+                                left="50%",
+                                background_mat=mat.red,
+                            )
+                        ),
+                    )
+
                     def build(c):
                         faces().group_by(Axis.Z)[-2].mat = mat.red
-                        extrude(faces().group_by(Axis.Z, tolerance=1e-4)[0], op=Pos(Z=-0.05))
+                        extrude(
+                            faces().group_by(Axis.Z, tolerance=1e-4)[0], op=Pos(Z=-0.05)
+                        )
+
                     ml.on_build(build)
             root.build()
 
@@ -3848,28 +3890,24 @@ class TestMLCombinedCases(BaseCADTest):
                     mat=mat.yellow,
                     font_size=1,
                     align="center",
-                    align_y="center"
+                    align_y="center",
                 ),
                 # Item 1: Circle with "hello" text using inherited default text alignment
-                ml(
-                    style.circle(radius=1, mat=mat.red),
-                    style(font_size=0.5),
-                    "hello"
-                ),
+                ml(style.circle(radius=1, mat=mat.red), style(font_size=0.5), "hello"),
                 # Item 2: Circle with "world" forced to right-aligned text rendering
                 ml(
                     style.circle(radius=1, mat=mat.red),
                     style(font_size=0.5, text_align="right"),
-                    "world"
+                    "world",
                 ),
                 # Raw text strings injected into the parent layout flow
-                "333", 
+                "333",
                 "444",
                 # Item 3: Circle with centered multi-axis adjustments for text "!!!"
                 ml(
                     style.circle(radius=1, mat=mat.red),
                     style(align_y="center", text_align="center"),
-                    "!!!"
+                    "!!!",
                 ),
             ).build()
 
@@ -3888,7 +3926,7 @@ class TestMLCombinedCases(BaseCADTest):
                     width=4,
                     height=4,
                     background_mat=mat.yellow,
-                    dissolve=0.0 # to stabilize hash of the result part
+                    dissolve=0.0,  # to stabilize hash of the result part
                 ),
                 # 1. Background Stripes: 5 blue strips using dynamic lambda sizing expressions
                 *[
@@ -3899,7 +3937,8 @@ class TestMLCombinedCases(BaseCADTest):
                             background_mat=mat.blue,
                             margin_top=0.05,
                         ),
-                    ) for i in range(5)
+                    )
+                    for i in range(5)
                 ],
                 # 2. Main Centered Artwork Container
                 ml(
@@ -3921,7 +3960,9 @@ class TestMLCombinedCases(BaseCADTest):
                     ml(
                         style.circle(radius=1.5, mat=mat.yellow),
                         style(bottom=0.4),
-                        style(overflow="hidden"),  # Clips the internal red rows to a circular arc
+                        style(
+                            overflow="hidden"
+                        ),  # Clips the internal red rows to a circular arc
                         ml(
                             style(
                                 width="100%",
@@ -3934,7 +3975,7 @@ class TestMLCombinedCases(BaseCADTest):
                                 width="100%",
                                 height="30%",
                                 background_mat=mat.red,
-                                margin_top=0.05
+                                margin_top=0.05,
                             ),
                         ),
                         ml(
@@ -3942,7 +3983,7 @@ class TestMLCombinedCases(BaseCADTest):
                                 width="100%",
                                 height="35%",
                                 background_mat=mat.red,
-                                margin_top=0.05
+                                margin_top=0.05,
                             ),
                         ),
                         # Concentric Targets nested dead-center inside the masked circle
@@ -3959,9 +4000,9 @@ class TestMLCombinedCases(BaseCADTest):
                                 style(
                                     border_mat=mat.yellow,
                                     border_width=0.05,
+                                ),
                             ),
-                            )
-                        )
+                        ),
                     ),
                     # Sub-element C: Lower compound red container with a slightly raised blue sub-strip
                     ml(
@@ -3970,7 +4011,7 @@ class TestMLCombinedCases(BaseCADTest):
                             height=0.5,
                             bottom=0.4,
                             background_mat=mat.red,
-                            align="center"
+                            align="center",
                         ),
                         ml(
                             style(
@@ -3994,95 +4035,110 @@ class TestMLCombinedCases(BaseCADTest):
         """Verify the creation of a hollowed sci-fi console station featuring angled screen extensions and stepped ladder access."""
         with BuildPart() as result:
             # Build the outer housing containing the nested inner cavity, screen arrays, and ladder structure
-            (wall_outer := ml(
-                style(
-                    width=5,
-                    height=5,
-                    background_mat=mat.blue,
-                    border_radius_top="50%",
-                    padding=0.2,
-                    padding_bottom=0,
-                    extrude=1
-                ),
-                (wall_inner := ml(
+            (
+                wall_outer := ml(
                     style(
-                        width="100%",
-                        height="100%",
-                        background_mat=mat.red,
+                        width=5,
+                        height=5,
+                        background_mat=mat.blue,
                         border_radius_top="50%",
-                        border_radius_segments=30,
-                        border_mat=mat.red,
-                        padding=0.4,
+                        padding=0.2,
                         padding_bottom=0,
-                        extrude=2
+                        extrude=1,
                     ),
-                    # Attach the tilted 3-monitor display console array along the bottom edge wire
-                    style.border_ml(
-                        style(
-                            display="flex",
-                            justify_content="space-around",
-                        ),
-                        [
+                    (
+                        wall_inner := ml(
+                            style(
+                                width="100%",
+                                height="100%",
+                                background_mat=mat.red,
+                                border_radius_top="50%",
+                                border_radius_segments=30,
+                                border_mat=mat.red,
+                                padding=0.4,
+                                padding_bottom=0,
+                                extrude=2,
+                            ),
+                            # Attach the tilted 3-monitor display console array along the bottom edge wire
+                            style.border_ml(
+                                style(
+                                    display="flex",
+                                    justify_content="space-around",
+                                ),
+                                [
+                                    ml(
+                                        style(
+                                            width=2.5,
+                                            height=1.5,
+                                            background_mat=mat.green,
+                                            pivot_x="-50%",
+                                            y_offset=lambda n: (
+                                                -n.height
+                                                + wall_inner.style.padding * 0.8
+                                            ),
+                                            z_offset="-30%",
+                                            transform=Origin(Y=1) * Rot(X=60),
+                                            bottom_scale=0.8,
+                                            extrude=0.15,
+                                            extrude_delete_source_faces=False,
+                                        ),
+                                        style.prop_box_extrude(bottom=0.7),
+                                    )
+                                    for _ in range(3)
+                                ],
+                                selector=lambda: (
+                                    edges().bottom() - edges().max_y()
+                                ).to_wire(),
+                            ),
+                            # Create the core room cutout and the stepped multi-tiered entry ladder
                             ml(
                                 style(
-                                    width=2.5,
-                                    height=1.5,
-                                    background_mat=mat.green,
-                                    pivot_x="-50%",
-                                    y_offset=lambda n: -n.height + wall_inner.style.padding * 0.8,
-                                    z_offset="-30%",
-                                    transform=Origin(Y=1) * Rot(X=60),
-                                    bottom_scale=0.8,
-                                    extrude=0.15,
-                                    extrude_delete_source_faces=False,
+                                    width="100%",
+                                    height="100%",
+                                    background_mat=mat.yellow,
+                                    border_radius_top="50%",
+                                    top=1e-2,
+                                    extrude=lambda: (
+                                        -(
+                                            wall_outer.style.extrude
+                                            + wall_inner.style.extrude
+                                        )
+                                    ),
                                 ),
-                                style.prop_box_extrude(bottom=0.7)
-                            ) for _ in range(3)
-                        ],
-                        selector=lambda: (edges().bottom() - edges().max_y()).to_wire(),
+                                style.extrude_delete_face(side_bottom=True),
+                                # Ladder Tier 3 (Highest platform step)
+                                ml(
+                                    style(
+                                        width="100%",
+                                        height="70%",
+                                        background_mat=mat.yellow,
+                                        border_radius_top="50%",
+                                        extrude=0.25 * 3,
+                                    ),
+                                ),
+                                # Ladder Tier 2 (Intermediate platform step)
+                                ml(
+                                    style(
+                                        width="100%",
+                                        height="15%",
+                                        background_mat=mat.yellow,
+                                        extrude=0.25 * 2,
+                                    ),
+                                ),
+                                # Ladder Tier 1 (Lowest entrance step)
+                                ml(
+                                    style(
+                                        width="100%",
+                                        height="15%",
+                                        background_mat=mat.yellow,
+                                        extrude=0.25 * 1,
+                                    ),
+                                ),
+                            ),
+                        )
                     ),
-                    # Create the core room cutout and the stepped multi-tiered entry ladder
-                    ml(
-                        style(
-                            width="100%",
-                            height="100%",
-                            background_mat=mat.yellow,
-                            border_radius_top="50%",
-                            top=1e-2,
-                            extrude=lambda: -(wall_outer.style.extrude + wall_inner.style.extrude),
-                        ),
-                        style.extrude_delete_face(side_bottom=True),
-                        # Ladder Tier 3 (Highest platform step)
-                        ml(
-                            style(
-                                width="100%",
-                                height="70%",
-                                background_mat=mat.yellow,
-                                border_radius_top="50%",
-                                extrude=0.25 * 3,
-                            ),
-                        ),
-                        # Ladder Tier 2 (Intermediate platform step)
-                        ml(
-                            style(
-                                width="100%",
-                                height="15%",
-                                background_mat=mat.yellow,  
-                                extrude=0.25 * 2
-                            ),
-                        ),
-                        # Ladder Tier 1 (Lowest entrance step)
-                        ml(
-                            style(
-                                width="100%",
-                                height="15%",
-                                background_mat=mat.yellow,
-                                extrude=0.25 * 1
-                            ),
-                        ),
-                    )
-                ))
-            )).build()
+                )
+            ).build()
 
         self.assertPart(
             result.part,
