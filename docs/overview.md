@@ -79,6 +79,7 @@ These systems preserve intent. Instead of writing a final coordinate such as `Po
 
 ## Choosing A Starting Point
 
+- Start with [Getting Started With blender_cad](getting-started.md) for a beginner-friendly walkthrough from one box to a small model.
 - Start with [Part And BuildPart](part.md) for primitives, booleans, mesh joins, and the main modelling context.
 - Use [Locations And Transforms](location.md) when placement or coordinate-frame composition is central to the model.
 - Use [Selectors And Mesh Topology](selectors.md) to target faces, edges, wires, or vertices after geometry has been built.
