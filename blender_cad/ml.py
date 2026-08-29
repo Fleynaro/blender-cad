@@ -2182,6 +2182,9 @@ class ml:
         start: int = 4,
         **kwargs: Any
     ) -> "ml":
+        # Layout passes probe the count first by growth and then by bisection.
+        # Retaining factory results by index makes that convergence deterministic
+        # and avoids rebuilding the same component during every probe.
         def wrapped(node: "ml"):
             if not node._build_info.generator_state:
                 node._build_info.generator_state = NodeGeneratorState(hi=start, n=start)
@@ -3260,6 +3263,10 @@ class ml:
     def _layout_until_stable(self, max_passes: int = 1024):
         """
         Re-run measurement passes until dynamic styles stop changing.
+
+        Style callbacks may read boxes computed by the prior pass. Stabilizing
+        the complete tree snapshot makes those dependencies settle before RBL
+        consumes evaluation boxes; a cycle fails explicitly at the pass limit.
         """
         prev = None
 
@@ -3285,7 +3292,11 @@ class ml:
     ):
         """
         Calculates tree layout, running solver optimization loop.
-        Does not emit 3D geometry.
+        Does not emit final 3D geometry.
+
+        Evaluation uses BoxSetPart boxes instead of final meshes so candidate
+        solver passes can cheaply evaluate RBL rules and collision boundaries.
+        Final mesh emission begins only after the solver has selected a layout.
         """
         context = RlRuntimeContext()
         root_rl = None
@@ -4056,6 +4067,9 @@ class ml:
                     cb.fn(bp)
         
         def build_extrude_subtract_parts(outer_pts: list[tuple[float, float]]):
+            # Negative extrusion is emitted as a deferred, slightly oversized
+            # cutter. It must survive child emission so the parent can subtract
+            # it after all geometry sharing this layout space exists.
             if extrude < 0.0:
                 part = self._emit_clip_part(outer_pts, border_w + border_offset, depth=2 * abs(extrude) * style.extrude_subtract_part_height_k)
                 _fix_subtract_part_size(part, style)
@@ -4302,6 +4316,9 @@ class ml:
                 if self.kind == "joint":
                     bp.part.register_joint(self.attrs["name"], bp.part.joint(Location(), deformable=True), propagate=True)
                 if self._cache_hash is not None:
+                    # The cache stores render-stage geometry only. Layout has
+                    # already resolved placement, so identical components can
+                    # share construction while each instance gets its transform.
                     self._build_ctx.part_cache[self._cache_hash] = MLCacheEntry(
                         part=bp.part.copy(),
                         subtract_parts=subtract_parts.copy()
@@ -4386,7 +4403,7 @@ class ml:
         evaluate: bool = False,
         instantiation_delay_sec=0.1
     ):
-        """Run layout and emit the resulting geometry."""
+        """Resolve the layout first, then emit the resulting final geometry."""
         ctx = build_ctx or MLBuildContext()
         ctx.evaluate = evaluate
         is_most_top_root = ctx.root_bp is None
