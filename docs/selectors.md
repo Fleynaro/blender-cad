@@ -53,7 +53,7 @@ The `all_single_faces()`, `all_single_edges()`, and `all_single_vertices()` help
 
 ## Topology Reconstruction
 
-Topology is rebuilt from the mesh using `Topology` in `geometry.py`. For every unvisited physical polygon, the analyzer grows a logical face across adjacent polygons whose normals differ by no more than the configured smooth-angle threshold. It then extracts that group's boundary loops as wires and segments each loop into logical edges at sharp corners.
+Topology is rebuilt from the mesh using `Topology` in `geometry.py`. For every unvisited physical polygon, the analyzer grows a logical face across adjacent polygons whose normals differ by no more than the configured smooth-angle threshold. It then extracts that group's boundary loops as wires and segments each loop into logical edges at sharp corners. [`docs/topology.md`](topology.md) explains the complete reconstruction pipeline, traversal rules, thresholds, and implementation limits.
 
 ```python
 with BuildPart(

@@ -1270,6 +1270,8 @@ class Topology:
             boundary_edges: List['BMEdgeWrapper'] = []
             for face in group:
                 for e in face.edges:
+                    # Internal tessellation edges have two incident polygons in this
+                    # group. Only an edge crossing the group boundary belongs to a wire.
                     if sum(1 for lf in e.link_faces if lf in f_set) == 1:
                         boundary_edges.append(e)
 
@@ -1385,11 +1387,14 @@ class Topology:
                 for adj in e.link_faces:
                     if adj not in visited_faces:
                         adj_n = adj.normal
-                        # Compare normals: if angle is small enough, they belong to the same CAD face
+                        # Grouping is local and therefore transitive: each accepted
+                        # neighbor can in turn admit more polygons into this Face.
                         if adj_n.length > 1e-6:
                             angle = curr.normal.angle(adj.normal)
                             if angle > math.pi / 2:
-                                # see test test_topology_reconstruction_complex
+                                # Treat nearly opposed normals as aligned to tolerate
+                                # flipped polygons in otherwise continuous surfaces.
+                                # See test_topology_reconstruction_complex.
                                 angle = abs(math.pi - angle)
                             if angle <= math.radians(self.config.smooth_angle):
                                 visited_faces.add(adj)
@@ -1429,7 +1434,8 @@ class Topology:
             # Segment the Loop into individual CAD Edges based on sharp angles
             cad_edges = self._segment_loop(ordered_loop, start_v)
             
-            # Simple heuristic for outer contour identification
+            # Discovery order is the only available signal here. This is sufficient
+            # for ordinary primitive caps, but is not a geometric containment test.
             is_outer = (len(wires) == 0)
             wire = Wire(self, cad_edges, is_outer)
             wires.append(wire)
