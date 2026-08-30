@@ -17,3 +17,9 @@ Before declaring the task complete:
 3. If no documentation update is needed, state why the change has no user-facing or contributor-facing impact; do not silently skip the check.
 
 Documentation changes belong in the same pull request or commit as the implementation they document.
+
+## Documentation-First Answers
+
+When answering a question about the codebase, first search the relevant content in `README.md` and `docs/`. Use the source code only after checking the documentation, either to fill a documented gap or to verify details that the documentation does not cover.
+
+Answers must distinguish between behavior confirmed by documentation and behavior inferred or verified from the implementation. When the documentation is missing or outdated, identify that gap and apply the documentation synchronization rule if the task includes a relevant code change.
