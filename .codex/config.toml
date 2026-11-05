@@ -1,0 +1,4 @@
+[mcp_servers.blender]
+command = "cmd"
+args = ["/c", "uvx", "blender-mcp==1.8.7"]
+enabled = true
