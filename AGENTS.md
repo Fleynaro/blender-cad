@@ -19,7 +19,6 @@
 - Scratch scripts must follow the project diagnostic pattern: import `importlib` and `sys`, reload `blender_cad` if it is already loaded, use `from blender_cad import *`, call `clear_scene()` before building geometry, and create results inside `BuildPart`. Finish with `result.part.show(name="TEST")` and `print("HASH = ", result.part.hash(use_materials=True))`. Adapt the result variable consistently. Omit `clear_scene()` only when the diagnostic explicitly tests an existing scene, and document why.
 - Permanent tests belong in `tests/` and must run through `test_runner.py`, itself invoked by `blender_runner.py` through Blender MCP. Use the smallest useful scope: changed test, containing file, related files, then the full suite only for broad changes or when justified.
 - Inspect stdout, stderr, traceback, scene output, selected/test counts, failures, skips, and exit code. A failing test must return a non-zero code. Update reference hashes only intentionally and explain why. Convert verified behavior into focused permanent tests.
-- Remove scratch scripts and generated artifacts before finishing; `.scratch/` must be empty.
 
 ## Blender MCP dependency
 
