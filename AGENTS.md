@@ -6,12 +6,6 @@
 - When API compatibility is uncertain, verify with a minimal script inside Blender 5.0 through Blender MCP. A normal Python interpreter does not validate `bpy` code.
 - Resolve project paths from the repository root and keep them relative. Do not put developer-specific absolute paths in project scripts or these instructions. Blender MCP may need an absolute path only for the `blender_runner.py` wrapper; its target paths stay project-relative.
 
-## Issue-first workflow
-
-- Before significant behavior, public API, test, or geometry changes, require an existing `Fleynaro/blender-cad` GitHub issue URL or `#<number>` from the request or context. An explicit user statement that no issue is needed also satisfies this requirement.
-- Typo, formatting, comment, and development-configuration changes are exempt.
-- Without an issue, limit work to read-only research and preparing one with `.kilo/command/issue.md`; do not implement. Creating an issue does not authorize implementation. When a request cites an issue, read it first and confirm the requested scope matches. If it does not, stop and prepare or revise the issue before implementation.
-
 ## Python, Blender MCP, and tests
 
 - Run **all project Python**—including diagnostics, scripts, tests, and list-only checks—only inside Blender 5.0 through Blender MCP and `blender_runner.py`. Never run `python`, `py`, a virtual-environment interpreter, `pytest`, or another Python-bearing terminal command; do not paste executable Python into a terminal or Blender console.
