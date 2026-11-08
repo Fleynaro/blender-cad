@@ -95,7 +95,7 @@ outline = curve(
 path = outline.curve
 ```
 
-`curve.step(length, angle=..., rot=..., smooth=..., radius=..., tag=...)` advances in the current heading. `curve.smooth(enabled=True, radius=1.0)` configures Bezier fillets, while a step can override it locally. `curve.axis(...)`, `curve.rot(...)`, and `curve.clear_rot()` control heading. `curve.move_to(...)`, `move_to_X()`, and `move_to_Y()` add directed moves. `trim_ends=True` removes the first and last endpoint knots; `close` controls whether the generated Bezier spline is cyclic.
+`curve.step(length, angle=..., rot=..., smooth=..., radius=..., tag=...)` advances in the current heading. `curve.move_to(target, tag=...)`, `curve.move_to_X(tag=...)`, and `curve.move_to_Y(tag=...)` add directed moves with optional tags scoped to that segment. Segment tags are copied to both endpoint knots, so the resulting mesh outline can carry them onto its edges. `curve.tag(...)` remains persistent for the current and following points. `curve.smooth(enabled=True, radius=1.0)` configures Bezier fillets, while a step can override it locally. `curve.axis(...)`, `curve.rot(...)`, and `curve.clear_rot()` control heading. `trim_ends=True` removes the first and last endpoint knots; `close` controls whether the generated Bezier spline is cyclic.
 
 ## Tested References
 

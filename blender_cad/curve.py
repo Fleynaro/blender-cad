@@ -1245,14 +1245,15 @@ class curve:
     @dataclass
     class move_to:
         target: Pos
+        tag: Optional[str | Iterable[str]] = None
 
     @dataclass
     class move_to_X:
-        pass
+        tag: Optional[str | Iterable[str]] = None
 
     @dataclass
     class move_to_Y:
-        pass
+        tag: Optional[str | Iterable[str]] = None
 
     item_type: TypeAlias = Union[
         step,
@@ -1373,14 +1374,14 @@ class curve:
             ctx.rot = Rot()
 
         elif isinstance(item, curve.move_to):
-            self._draw(ctx, item.target)
+            self._draw(ctx, item.target, tag=item.tag)
 
         elif isinstance(item, curve.move_to_X):
-            self._draw(ctx, Pos(X=ctx.pos.x, Z=ctx.pos.z))
+            self._draw(ctx, Pos(X=ctx.pos.x, Z=ctx.pos.z), tag=item.tag)
             ctx.rot = Rot(Z=-90)
 
         elif isinstance(item, curve.move_to_Y):
-            self._draw(ctx, Pos(Y=ctx.pos.y, Z=ctx.pos.z))
+            self._draw(ctx, Pos(Y=ctx.pos.y, Z=ctx.pos.z), tag=item.tag)
             ctx.rot = Rot(Z=180)
 
     def _draw(

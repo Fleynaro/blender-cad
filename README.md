@@ -34,7 +34,7 @@ result.part.show(name="gift_box")
 
 Run it to add a blue box with a gold top to the current Blender scene. Dimensions are Blender units; use one consistent unit convention for a project.
 
-To inspect user geometry tags in the viewport, call `result.part.show(name="gift_box", show_tags=True)`. This displays user face and edge tags on dark, double-sided plaques facing world `+X`. Plaques sit in spaced columns outside the part's world-space bounding box, with colored leader lines connecting them to their tagged regions. Connected elements share plaques within sections along `X`, so labels appear along the part. Vertex and system tags are off by default. Pass `show_tags=TagDisplayConfig(vertices=True, system_tags=True)` to include them. User tags use a readable, consistent color palette.
+To inspect user geometry tags in the viewport, call `result.part.show(name="gift_box", show_tags=True)`. This displays user face and edge tags on dark, double-sided plaques facing world `+X`, each with a `Грань`, `Ребро`, or `Вершина` heading. Plaques sit in spaced columns outside the part's world-space bounding box, with colored leader lines connecting them to their tagged regions. Connected elements share plaques within sections along `X`, so labels appear along the part. Vertex and system tags are off by default. Pass `show_tags=TagDisplayConfig(vertices=True, system_tags=True)` to include them. User tags use a readable, consistent color palette.
 
 ## Build With Code
 

@@ -59,6 +59,7 @@ class Part(Object):
     _TAG_LABEL_MATERIAL = "BlenderCAD_TagLabels"
     _SYSTEM_TAG_LABEL_MATERIAL = "BlenderCAD_SystemTagLabels"
     _TAG_LABEL_PLATE_MATERIAL = "BlenderCAD_TagLabelPlate"
+    _TAG_ELEMENT_TYPE_MATERIAL = "BlenderCAD_TagElementType"
     _USER_TAG_LABEL_MATERIAL_PREFIX = "BlenderCAD_UserTag_"
     _TAG_LABEL_RELATIONSHIP_STATE_PREFIX = "_blender_cad_tag_label_relationships_"
     _USER_TAG_PALETTE = (
@@ -237,6 +238,7 @@ class Part(Object):
                 self._TAG_LABEL_MATERIAL,
                 self._SYSTEM_TAG_LABEL_MATERIAL,
                 self._TAG_LABEL_PLATE_MATERIAL,
+                self._TAG_ELEMENT_TYPE_MATERIAL,
             ) or label_material.name.startswith(self._USER_TAG_LABEL_MATERIAL_PREFIX)
             if is_tag_material and label_material.users == 0:
                 bpy.data.materials.remove(label_material)
@@ -484,21 +486,9 @@ class Part(Object):
             self._TAG_LABEL_PLATE_MATERIAL, (0.012, 0.018, 0.03, 1.0)
         )
         system_color = (0.2, 0.95, 1.0, 1.0)
-        system_material = get_label_material(
-            self._SYSTEM_TAG_LABEL_MATERIAL, system_color
-        )
-        user_materials: dict[str, bpy.types.Material] = {}
-
-        def get_user_tag_material(tag: str) -> bpy.types.Material:
-            material = user_materials.get(tag)
-            if material is None:
-                tag_hash = user_tag_hashes[tag].hex()[:12]
-                material = get_label_material(
-                    f"{self._USER_TAG_LABEL_MATERIAL_PREFIX}{tag_hash}",
-                    user_tag_colors[tag],
-                )
-                user_materials[tag] = material
-            return material
+        type_color = (0.82, 0.88, 0.98, 1.0)
+        system_material_name = self._SYSTEM_TAG_LABEL_MATERIAL
+        type_material_name = self._TAG_ELEMENT_TYPE_MATERIAL
 
         def world_surface_normal(normal: Vector):
             world_normal = normal_matrix @ normal
@@ -528,7 +518,8 @@ class Part(Object):
             plate_width: float,
             plate_height: float,
             side_sign: float,
-            material: bpy.types.Material,
+            material_name: str,
+            color: tuple[float, float, float, float],
         ):
             endpoint = Vector(
                 (
@@ -548,6 +539,7 @@ class Part(Object):
             leader_data.resolution_u = 1
             leader_data.bevel_depth = max(font_size * 0.025, model_size * 0.0004, 0.002)
             leader_data.bevel_resolution = 0
+            material = get_label_material(material_name, color)
             leader_data.materials.append(material)
             spline = leader_data.splines.new("POLY")
             spline.points.add(1)
@@ -567,7 +559,7 @@ class Part(Object):
         def create_plate_object(
             domain: str,
             index: int,
-            lines: list[tuple[str, float, bpy.types.Material, tuple]],
+            lines: list[tuple[str, float, str, tuple]],
             anchor_position: Vector,
             position: Vector,
             side_sign: float,
@@ -578,7 +570,7 @@ class Part(Object):
             rotation,
         ):
             stripe_width = font_size * 0.12
-            stripe_color = lines[0][3]
+            stripe_color = lines[1][3] if len(lines) > 1 else lines[0][3]
             vertices = [
                 (-plate_width / 2, -plate_height / 2, -plate_depth / 2),
                 (plate_width / 2, -plate_height / 2, -plate_depth / 2),
@@ -638,7 +630,7 @@ class Part(Object):
             link_label_object(plate_obj, plate_matrix)
 
             first_line_offset = (len(lines) - 1) * line_spacing / 2
-            for line_index, (text, size, material, _color) in enumerate(lines):
+            for line_index, (text, size, material_name, color) in enumerate(lines):
                 line_offset = first_line_offset - line_index * line_spacing
                 for text_side, z_offset, flip in (
                     ("Front", plate_depth / 2 + font_size * 0.04, False),
@@ -655,6 +647,7 @@ class Part(Object):
                     label_data.size = size
                     label_data.align_x = "CENTER"
                     label_data.align_y = "CENTER"
+                    material = get_label_material(material_name, color)
                     label_data.materials.append(material)
                     label_obj = bpy.data.objects.new(
                         f"{self.obj.name}_Tag_{domain}_{index}_Line_{line_index}_{text_side}",
@@ -676,7 +669,8 @@ class Part(Object):
                 plate_width,
                 plate_height,
                 side_sign,
-                lines[0][2],
+                lines[1][2],
+                lines[1][3],
             )
 
         pending_plates = []
@@ -691,7 +685,13 @@ class Part(Object):
             system_tags = tuple(tag for tag in tags if tag in self._SYSTEM_TAGS)
             custom_tags = tuple(tag for tag in tags if tag not in self._SYSTEM_TAGS)
             lines = [
-                (tag, font_size, get_user_tag_material(tag), user_tag_colors[tag])
+                (
+                    tag,
+                    font_size,
+                    f"{self._USER_TAG_LABEL_MATERIAL_PREFIX}"
+                    f"{user_tag_hashes[tag].hex()[:12]}",
+                    user_tag_colors[tag],
+                )
                 for tag in custom_tags
             ]
             if system_tags:
@@ -699,11 +699,20 @@ class Part(Object):
                     (
                         ", ".join(system_tags),
                         font_size * 0.82,
-                        system_material,
+                        system_material_name,
                         system_color,
                     )
                 )
             if lines:
+                element_type = {
+                    "FACE": "Грань",
+                    "EDGE": "Ребро",
+                    "POINT": "Вершина",
+                }[domain]
+                lines.insert(
+                    0,
+                    (element_type, font_size * 0.72, type_material_name, type_color),
+                )
                 anchor_position = world_matrix @ center
                 anchor_position += world_normal * normal_offset
                 domain_offsets = {"FACE": 0.65, "EDGE": -0.65, "POINT": 0.0}
