@@ -27,14 +27,29 @@ if TYPE_CHECKING:
     )
 
 
+_LEGACY_TAG_LABEL_OVERLAY_REGISTRY_KEY = "_blender_cad_tag_label_overlays_v1"
+_legacy_overlay_registry = bpy.app.driver_namespace.pop(
+    _LEGACY_TAG_LABEL_OVERLAY_REGISTRY_KEY, None
+)
+if _legacy_overlay_registry is not None:
+    for _area, _handler in tuple(
+        _legacy_overlay_registry.get("handlers", {}).values()
+    ):
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(_handler, "WINDOW")
+        except (ReferenceError, RuntimeError, ValueError):
+            pass
+
+
 @dataclass(frozen=True)
 class TagDisplayConfig:
-    """Controls which mesh tag labels ``Part.show`` creates."""
+    """Controls mesh-tag plaque domains and longitudinal grouping."""
 
     faces: bool = True
     edges: bool = True
     vertices: bool = False
     system_tags: bool = False
+    group_adjacent: bool = True
 
 
 class Part(Object):
@@ -43,8 +58,9 @@ class Part(Object):
     _TAG_LABEL_MARKER = "_blender_cad_tag_label"
     _TAG_LABEL_MATERIAL = "BlenderCAD_TagLabels"
     _SYSTEM_TAG_LABEL_MATERIAL = "BlenderCAD_SystemTagLabels"
+    _TAG_LABEL_PLATE_MATERIAL = "BlenderCAD_TagLabelPlate"
     _USER_TAG_LABEL_MATERIAL_PREFIX = "BlenderCAD_UserTag_"
-    _TAG_LABEL_OVERLAY_STATE_PREFIX = "_blender_cad_tag_label_overlay_"
+    _TAG_LABEL_RELATIONSHIP_STATE_PREFIX = "_blender_cad_tag_label_relationships_"
     _USER_TAG_PALETTE = (
         (1.0, 0.28, 0.22, 1.0),  # coral
         (1.0, 0.68, 0.05, 1.0),  # amber
@@ -108,7 +124,8 @@ class Part(Object):
         """Display this part and optionally label its mesh tags.
 
         ``show_tags=True`` shows user face and edge tags. Pass a
-        ``TagDisplayConfig`` to include vertex or system tags and choose domains.
+        ``TagDisplayConfig`` to include vertex or system tags, choose domains,
+        or disable grouping of adjacent tagged elements.
         """
         if isinstance(show_tags, bool):
             tag_config = TagDisplayConfig() if show_tags else None
@@ -196,17 +213,21 @@ class Part(Object):
         return normals
 
     def _clear_tag_labels(self):
-        """Removes text objects created by the mesh-tag visualization."""
+        """Removes the text and backing plates created for mesh tags."""
         if not self.is_physically_valid:
             return
 
         for child in tuple(self.obj.children):
             if not child.get(self._TAG_LABEL_MARKER, False):
                 continue
-            text_data = child.data
+            label_data = child.data
             bpy.data.objects.remove(child, do_unlink=True)
-            if isinstance(text_data, bpy.types.Curve) and text_data.users == 0:
-                bpy.data.curves.remove(text_data)
+            if label_data is None or label_data.users != 0:
+                continue
+            if isinstance(label_data, bpy.types.Curve):
+                bpy.data.curves.remove(label_data)
+            elif isinstance(label_data, bpy.types.Mesh):
+                bpy.data.meshes.remove(label_data)
 
         if not any(obj.get(self._TAG_LABEL_MARKER, False) for obj in bpy.data.objects):
             self._restore_tag_label_relationship_lines()
@@ -215,6 +236,7 @@ class Part(Object):
             is_tag_material = label_material.name in (
                 self._TAG_LABEL_MATERIAL,
                 self._SYSTEM_TAG_LABEL_MATERIAL,
+                self._TAG_LABEL_PLATE_MATERIAL,
             ) or label_material.name.startswith(self._USER_TAG_LABEL_MATERIAL_PREFIX)
             if is_tag_material and label_material.users == 0:
                 bpy.data.materials.remove(label_material)
@@ -230,7 +252,7 @@ class Part(Object):
             if not view_areas:
                 continue
 
-            state_key = f"{self._TAG_LABEL_OVERLAY_STATE_PREFIX}{screen.name}"
+            state_key = f"{self._TAG_LABEL_RELATIONSHIP_STATE_PREFIX}{screen.name}"
             if state_key not in scene:
                 scene[state_key] = "".join(
                     "1" if area.spaces.active.overlay.show_relationship_lines else "0"
@@ -246,7 +268,7 @@ class Part(Object):
             return
 
         for screen in bpy.data.screens:
-            state_key = f"{self._TAG_LABEL_OVERLAY_STATE_PREFIX}{screen.name}"
+            state_key = f"{self._TAG_LABEL_RELATIONSHIP_STATE_PREFIX}{screen.name}"
             if state_key not in scene:
                 continue
 
@@ -262,7 +284,7 @@ class Part(Object):
         hide=False,
         config: TagDisplayConfig = TagDisplayConfig(),
     ):
-        """Creates small, surface-aligned text labels for tagged mesh elements."""
+        """Creates spaced tag plaques and leader lines for tagged mesh elements."""
         mesh = self.obj.data
         if not isinstance(mesh, bpy.types.Mesh):
             return
@@ -296,11 +318,129 @@ class Part(Object):
         if not any(records.values()):
             return
 
+        world_matrix = self.obj.matrix_world.copy()
+        world_bbox = [world_matrix @ Vector(corner) for corner in self.obj.bound_box]
+        bbox_min = Vector(
+            tuple(min(corner[axis] for corner in world_bbox) for axis in range(3))
+        )
+        bbox_max = Vector(
+            tuple(max(corner[axis] for corner in world_bbox) for axis in range(3))
+        )
+        model_size = max((float(value) for value in self.obj.dimensions), default=0.0)
+        font_size = max(model_size * 0.016, 0.005)
+        local_x_values = [float(vertex.co.x) for vertex in mesh.vertices]
+        local_x_min = min(local_x_values, default=0.0)
+        local_x_span = max(local_x_values, default=0.0) - local_x_min
+        tag_group_x_span = max(local_x_span * 0.25, font_size * 6.0)
+
+        def element_local_x(domain: str, index: int) -> float:
+            if domain == "FACE":
+                return float(mesh.polygons[index].center.x)
+            if domain == "EDGE":
+                edge = mesh.edges[index]
+                return float(
+                    (
+                        mesh.vertices[edge.vertices[0]].co.x
+                        + mesh.vertices[edge.vertices[1]].co.x
+                    )
+                    * 0.5
+                )
+            return float(mesh.vertices[index].co.x)
+
+        def x_region(index: int, domain: str) -> int:
+            region_index = int(
+                (element_local_x(domain, index) - local_x_min) // tag_group_x_span
+            )
+            max_region_index = max(
+                int(max(local_x_span - 1e-9, 0.0) / tag_group_x_span), 0
+            )
+            return min(region_index, max_region_index)
+
+        def grouped_tag_records(domain: str, domain_records):
+            if not config.group_adjacent:
+                return [
+                    (index, tags, (index,)) for index, tags in domain_records
+                ]
+
+            element_count = {
+                "FACE": len(mesh.polygons),
+                "EDGE": len(mesh.edges),
+                "POINT": len(mesh.vertices),
+            }[domain]
+            adjacency = [set() for _ in range(element_count)]
+            if domain == "FACE":
+                edge_lookup = {
+                    tuple(sorted(edge.vertices)): index
+                    for index, edge in enumerate(mesh.edges)
+                }
+                faces_by_edge = {}
+                for polygon in mesh.polygons:
+                    vertices = polygon.vertices
+                    for position, vertex_a in enumerate(vertices):
+                        vertex_b = vertices[(position + 1) % len(vertices)]
+                        edge_index = edge_lookup.get(
+                            tuple(sorted((vertex_a, vertex_b)))
+                        )
+                        if edge_index is not None:
+                            faces_by_edge.setdefault(edge_index, []).append(
+                                polygon.index
+                            )
+                for face_indices in faces_by_edge.values():
+                    for face_index in face_indices:
+                        adjacency[face_index].update(
+                            other for other in face_indices if other != face_index
+                        )
+            elif domain == "EDGE":
+                edges_by_vertex = {}
+                for edge_index, edge in enumerate(mesh.edges):
+                    for vertex_index in edge.vertices:
+                        edges_by_vertex.setdefault(vertex_index, []).append(edge_index)
+                for edge_indices in edges_by_vertex.values():
+                    for edge_index in edge_indices:
+                        adjacency[edge_index].update(
+                            other for other in edge_indices if other != edge_index
+                        )
+            else:
+                for edge in mesh.edges:
+                    vertex_a, vertex_b = edge.vertices
+                    adjacency[vertex_a].add(vertex_b)
+                    adjacency[vertex_b].add(vertex_a)
+
+            tags_by_index = dict(domain_records)
+            remaining = set(tags_by_index)
+            grouped = []
+            while remaining:
+                seed = min(remaining)
+                seed_tags = tags_by_index[seed]
+                seed_key = tuple(sorted(seed_tags))
+                component = []
+                pending = [seed]
+                remaining.remove(seed)
+                while pending:
+                    index = pending.pop()
+                    component.append(index)
+                    for neighbor in adjacency[index]:
+                        if neighbor not in remaining:
+                            continue
+                        if tuple(sorted(tags_by_index[neighbor])) != seed_key:
+                            continue
+                        if x_region(neighbor, domain) != x_region(seed, domain):
+                            continue
+                        remaining.remove(neighbor)
+                        pending.append(neighbor)
+                grouped.append((min(component), seed_tags, tuple(sorted(component))))
+            return grouped
+
+        grouped_records = {
+            domain: grouped_tag_records(domain, domain_records)
+            for domain, domain_records in records.items()
+        }
+
         user_tags = sorted(
             {
                 tag
-                for domain_records in records.values()
-                for _, tags in domain_records
+                for domain_records in grouped_records.values()
+                for _, tags, _indices in domain_records
                 for tag in tags
                 if tag not in self._SYSTEM_TAGS
             }
@@ -317,25 +457,17 @@ class Part(Object):
         }
 
         edge_normals = self._tag_edge_normals(mesh) if records["EDGE"] else []
-        vertex_tangents: list[Optional[Vector]] = [None] * len(mesh.vertices)
-        vertex_tangent_lengths = [-1.0] * len(mesh.vertices)
-        for edge in mesh.edges:
-            vertex_a, vertex_b = edge.vertices
-            tangent = mesh.vertices[vertex_b].co - mesh.vertices[vertex_a].co
-            length_squared = tangent.length_squared
-            if length_squared > vertex_tangent_lengths[vertex_a]:
-                vertex_tangents[vertex_a] = tangent.copy()
-                vertex_tangent_lengths[vertex_a] = length_squared
-            if length_squared > vertex_tangent_lengths[vertex_b]:
-                vertex_tangents[vertex_b] = -tangent
-                vertex_tangent_lengths[vertex_b] = length_squared
-
-        world_matrix = self.obj.matrix_world.copy()
-        world_axes = world_matrix.to_3x3()
         normal_matrix = world_matrix.to_3x3().inverted_safe().transposed()
-        model_size = max((float(value) for value in self.obj.dimensions), default=0.0)
-        font_size = max(model_size * 0.012, 0.005)
-        normal_offset = max(font_size * 0.3, model_size * 0.001)
+        normal_offset = max(font_size * 0.5, model_size * 0.001)
+        label_up = Vector((0.0, 0.0, 1.0))
+        # Local text X/Y/Z map to world Y/Z/X, so the plaque face is normal to +X.
+        label_rotation = Matrix(
+            (
+                (0.0, 1.0, 0.0),
+                (0.0, 0.0, 1.0),
+                (1.0, 0.0, 0.0),
+            )
+        ).transposed().to_quaternion()
 
         def get_label_material(name: str, color: tuple[float, float, float, float]):
             label_material = bpy.data.materials.get(name)
@@ -348,9 +480,12 @@ class Part(Object):
                     shader.inputs["Base Color"].default_value = color
             return label_material
 
+        plate_material = get_label_material(
+            self._TAG_LABEL_PLATE_MATERIAL, (0.012, 0.018, 0.03, 1.0)
+        )
+        system_color = (0.2, 0.95, 1.0, 1.0)
         system_material = get_label_material(
-            self._SYSTEM_TAG_LABEL_MATERIAL,
-            (0.2, 0.95, 1.0, 1.0),
+            self._SYSTEM_TAG_LABEL_MATERIAL, system_color
         )
         user_materials: dict[str, bpy.types.Material] = {}
 
@@ -365,146 +500,269 @@ class Part(Object):
                 user_materials[tag] = material
             return material
 
-        def label_orientation(normal: Vector, tangent: Optional[Vector]):
+        def world_surface_normal(normal: Vector):
             world_normal = normal_matrix @ normal
             if world_normal.length_squared <= 1e-12:
                 world_normal = normal_matrix @ Vector((0.0, 0.0, 1.0))
             if world_normal.length_squared <= 1e-12:
                 world_normal = Vector((0.0, 0.0, 1.0))
             world_normal.normalize()
+            return world_normal
 
-            preferred_up = world_axes @ Vector((0.0, 1.0, 0.0))
-            preferred_up -= world_normal * preferred_up.dot(world_normal)
-            if preferred_up.length_squared <= 1e-12:
-                preferred_up = world_axes @ Vector((1.0, 0.0, 0.0))
-                preferred_up -= world_normal * preferred_up.dot(world_normal)
-            if preferred_up.length_squared <= 1e-12:
-                preferred_up = world_normal.orthogonal()
-            preferred_up.normalize()
-
-            world_tangent = (
-                world_axes @ tangent
-                if tangent is not None and tangent.length_squared > 1e-12
-                else preferred_up.cross(world_normal)
-            )
-            world_tangent -= world_normal * world_tangent.dot(world_normal)
-            if world_tangent.length_squared <= 1e-12:
-                world_tangent = preferred_up.cross(world_normal)
-            world_tangent.normalize()
-
-            world_up = world_normal.cross(world_tangent)
-            world_up.normalize()
-            if world_up.dot(preferred_up) < 0:
-                world_tangent.negate()
-                world_up.negate()
-
-            rotation = Matrix(
-                (world_tangent, world_up, world_normal)
-            ).transposed().to_quaternion()
-            return world_normal, world_up, rotation
-
-        def create_label_object(
-            domain: str,
-            index: int,
-            label_group: str,
-            text: str,
-            center: Vector,
-            world_normal: Vector,
-            world_up: Vector,
-            rotation,
-            size: float,
-            material: bpy.types.Material,
-            line_offset: float,
+        def link_label_object(
+            label_obj: bpy.types.Object,
+            label_matrix: Matrix,
         ):
-            position = world_matrix @ center
-            position += world_normal * normal_offset
-            position += world_up * line_offset
-
-            label_data = bpy.data.curves.new(
-                name=f"{self.obj.name}_Tag_{domain}_{index}_{label_group}_Text",
-                type="FONT",
-            )
-            label_data.body = text
-            label_data.size = size
-            label_data.align_x = "CENTER"
-            label_data.align_y = "CENTER"
-            label_data.materials.append(material)
-
-            label_obj = bpy.data.objects.new(
-                f"{self.obj.name}_Tag_{domain}_{index}_{label_group}", label_data
-            )
             collection.objects.link(label_obj)
             label_obj.parent = self.obj
             label_obj.matrix_parent_inverse = world_matrix.inverted_safe()
-            label_obj.matrix_world = Matrix.LocRotScale(
-                position,
-                rotation,
-                Vector((1.0, 1.0, 1.0)),
-            )
+            label_obj.matrix_world = label_matrix
             label_obj.hide_set(hide)
             label_obj[self._TAG_LABEL_MARKER] = True
 
+        def create_leader_object(
+            domain: str,
+            index: int,
+            anchor_position: Vector,
+            position: Vector,
+            plate_width: float,
+            plate_height: float,
+            side_sign: float,
+            material: bpy.types.Material,
+        ):
+            endpoint = Vector(
+                (
+                    position.x,
+                    position.y - side_sign * plate_width / 2,
+                    min(
+                        max(anchor_position.z, position.z - plate_height / 2),
+                        position.z + plate_height / 2,
+                    ),
+                )
+            )
+            inverse_world = world_matrix.inverted_safe()
+            leader_data = bpy.data.curves.new(
+                f"{self.obj.name}_Tag_{domain}_{index}_LeaderCurve", type="CURVE"
+            )
+            leader_data.dimensions = "3D"
+            leader_data.resolution_u = 1
+            leader_data.bevel_depth = max(font_size * 0.025, model_size * 0.0004, 0.002)
+            leader_data.bevel_resolution = 0
+            leader_data.materials.append(material)
+            spline = leader_data.splines.new("POLY")
+            spline.points.add(1)
+            for point, world_position in zip(
+                spline.points,
+                (anchor_position, endpoint),
+            ):
+                local_position = inverse_world @ world_position
+                point.co = (*local_position, 1.0)
+
+            leader_obj = bpy.data.objects.new(
+                f"{self.obj.name}_Tag_{domain}_{index}_Leader", leader_data
+            )
+            link_label_object(leader_obj, world_matrix.copy())
+            leader_obj.show_in_front = True
+
+        def create_plate_object(
+            domain: str,
+            index: int,
+            lines: list[tuple[str, float, bpy.types.Material, tuple]],
+            anchor_position: Vector,
+            position: Vector,
+            side_sign: float,
+            plate_width: float,
+            plate_height: float,
+            line_spacing: float,
+            plate_depth: float,
+            rotation,
+        ):
+            stripe_width = font_size * 0.12
+            stripe_color = lines[0][3]
+            vertices = [
+                (-plate_width / 2, -plate_height / 2, -plate_depth / 2),
+                (plate_width / 2, -plate_height / 2, -plate_depth / 2),
+                (plate_width / 2, plate_height / 2, -plate_depth / 2),
+                (-plate_width / 2, plate_height / 2, -plate_depth / 2),
+                (-plate_width / 2, -plate_height / 2, plate_depth / 2),
+                (plate_width / 2, -plate_height / 2, plate_depth / 2),
+                (plate_width / 2, plate_height / 2, plate_depth / 2),
+                (-plate_width / 2, plate_height / 2, plate_depth / 2),
+            ]
+            faces = [
+                (0, 3, 2, 1),
+                (4, 5, 6, 7),
+                (0, 1, 5, 4),
+                (1, 2, 6, 5),
+                (2, 3, 7, 6),
+                (3, 0, 4, 7),
+            ]
+            stripe_left = -plate_width / 2 + font_size * 0.2
+            stripe_right = stripe_left + stripe_width
+            stripe_front_z = plate_depth / 2 + font_size * 0.01
+            vertices.extend(
+                (
+                    (stripe_left, -plate_height / 2, stripe_front_z),
+                    (stripe_right, -plate_height / 2, stripe_front_z),
+                    (stripe_right, plate_height / 2, stripe_front_z),
+                    (stripe_left, plate_height / 2, stripe_front_z),
+                    (stripe_left, -plate_height / 2, -stripe_front_z),
+                    (stripe_right, -plate_height / 2, -stripe_front_z),
+                    (stripe_right, plate_height / 2, -stripe_front_z),
+                    (stripe_left, plate_height / 2, -stripe_front_z),
+                )
+            )
+            faces.extend(((8, 9, 10, 11), (12, 15, 14, 13)))
+
+            plate_data = bpy.data.meshes.new(
+                f"{self.obj.name}_Tag_{domain}_{index}_PlateMesh"
+            )
+            plate_data.from_pydata(vertices, [], faces)
+            plate_data.materials.append(plate_material)
+            stripe_hash = hashlib.sha256(
+                str(stripe_color).encode("utf-8")
+            ).hexdigest()[:12]
+            stripe_material = get_label_material(
+                f"{self._USER_TAG_LABEL_MATERIAL_PREFIX}stripe_{stripe_hash}",
+                stripe_color,
+            )
+            plate_data.materials.append(stripe_material)
+            plate_data.polygons[-2].material_index = 1
+            plate_data.polygons[-1].material_index = 1
+            plate_obj = bpy.data.objects.new(
+                f"{self.obj.name}_Tag_{domain}_{index}_Plate", plate_data
+            )
+            plate_matrix = Matrix.LocRotScale(
+                position, rotation, Vector((1.0, 1.0, 1.0))
+            )
+            link_label_object(plate_obj, plate_matrix)
+
+            first_line_offset = (len(lines) - 1) * line_spacing / 2
+            for line_index, (text, size, material, _color) in enumerate(lines):
+                line_offset = first_line_offset - line_index * line_spacing
+                for text_side, z_offset, flip in (
+                    ("Front", plate_depth / 2 + font_size * 0.04, False),
+                    ("Back", -plate_depth / 2 - font_size * 0.04, True),
+                ):
+                    label_data = bpy.data.curves.new(
+                        name=(
+                            f"{self.obj.name}_Tag_{domain}_{index}_"
+                            f"Line_{line_index}_{text_side}_Text"
+                        ),
+                        type="FONT",
+                    )
+                    label_data.body = text
+                    label_data.size = size
+                    label_data.align_x = "CENTER"
+                    label_data.align_y = "CENTER"
+                    label_data.materials.append(material)
+                    label_obj = bpy.data.objects.new(
+                        f"{self.obj.name}_Tag_{domain}_{index}_Line_{line_index}_{text_side}",
+                        label_data,
+                    )
+                    label_matrix = plate_matrix @ Matrix.Translation(
+                        (0.0, line_offset, z_offset)
+                    )
+                    if flip:
+                        label_matrix = label_matrix @ Matrix.Rotation(
+                            3.141592653589793, 4, "Y"
+                        )
+                    link_label_object(label_obj, label_matrix)
+            create_leader_object(
+                domain,
+                index,
+                anchor_position,
+                position,
+                plate_width,
+                plate_height,
+                side_sign,
+                lines[0][2],
+            )
+
+        pending_plates = []
         def add_label(
             domain: str,
             index: int,
             tags: tuple[str, ...],
             center: Vector,
             normal: Vector,
-            tangent: Optional[Vector],
         ):
-            world_normal, world_up, rotation = label_orientation(normal, tangent)
+            world_normal = world_surface_normal(normal)
             system_tags = tuple(tag for tag in tags if tag in self._SYSTEM_TAGS)
             custom_tags = tuple(tag for tag in tags if tag not in self._SYSTEM_TAGS)
-            line_spacing = font_size * 0.82
-            line_count = len(custom_tags) + bool(system_tags)
-            first_line_offset = max(line_count - 1, 0) * line_spacing * 0.5
-            for custom_index, tag in enumerate(custom_tags):
-                create_label_object(
-                    domain,
-                    index,
-                    f"User_{custom_index}",
-                    tag,
-                    center,
-                    world_normal,
-                    world_up,
-                    rotation,
-                    font_size,
-                    get_user_tag_material(tag),
-                    first_line_offset - custom_index * line_spacing,
-                )
+            lines = [
+                (tag, font_size, get_user_tag_material(tag), user_tag_colors[tag])
+                for tag in custom_tags
+            ]
             if system_tags:
-                system_font_size = font_size * 0.82
-                create_label_object(
-                    domain,
-                    index,
-                    "System",
-                    ", ".join(system_tags),
-                    center,
-                    world_normal,
-                    world_up,
-                    rotation,
-                    system_font_size,
-                    system_material,
-                    first_line_offset - len(custom_tags) * line_spacing,
+                lines.append(
+                    (
+                        ", ".join(system_tags),
+                        font_size * 0.82,
+                        system_material,
+                        system_color,
+                    )
+                )
+            if lines:
+                anchor_position = world_matrix @ center
+                anchor_position += world_normal * normal_offset
+                domain_offsets = {"FACE": 0.65, "EDGE": -0.65, "POINT": 0.0}
+                anchor_position += label_up * font_size * domain_offsets[domain]
+                line_spacing = font_size * 1.35
+                plate_width = max(
+                    max(font_size * 0.62 * len(text) for text, *_rest in lines)
+                    + font_size * 1.05,
+                    font_size * 1.8,
+                )
+                plate_height = max(
+                    font_size * 1.7,
+                    (len(lines) - 1) * line_spacing + font_size * 1.7,
+                )
+                pending_plates.append(
+                    {
+                        "domain": domain,
+                        "index": index,
+                        "lines": lines,
+                        "anchor_position": anchor_position,
+                        "side": None,
+                        "line_spacing": line_spacing,
+                        "plate_width": plate_width,
+                        "plate_height": plate_height,
+                        "plate_depth": font_size * 0.08,
+                    }
                 )
 
-        for index, tags in records["FACE"]:
-            polygon = mesh.polygons[index]
-            vertices = polygon.vertices
-            face_tangent = max(
-                (
-                    mesh.vertices[vertices[(i + 1) % len(vertices)]].co
-                    - mesh.vertices[vertex_index].co
-                    for i, vertex_index in enumerate(vertices)
-                ),
-                key=lambda vector: vector.length_squared,
-                default=Vector((1.0, 0.0, 0.0)),
+        for index, tags, group_indices in grouped_records["FACE"]:
+            group_center = sum(
+                (mesh.polygons[face_index].center for face_index in group_indices),
+                Vector((0.0, 0.0, 0.0)),
+            ) / len(group_indices)
+            polygon = min(
+                (mesh.polygons[face_index] for face_index in group_indices),
+                key=lambda candidate: (candidate.center - group_center).length_squared,
             )
             add_label(
-                "FACE", index, tags, polygon.center, polygon.normal, face_tangent
+                "FACE", index, tags, polygon.center, polygon.normal
             )
 
-        for index, tags in records["EDGE"]:
+        for index, tags, group_indices in grouped_records["EDGE"]:
+            edge_centers = {
+                edge_index: (
+                    mesh.vertices[mesh.edges[edge_index].vertices[0]].co
+                    + mesh.vertices[mesh.edges[edge_index].vertices[1]].co
+                )
+                * 0.5
+                for edge_index in group_indices
+            }
+            group_center = sum(
+                edge_centers.values(), Vector((0.0, 0.0, 0.0))
+            ) / len(group_indices)
+            index = min(
+                group_indices,
+                key=lambda edge_index: (
+                    edge_centers[edge_index] - group_center
+                ).length_squared,
+            )
             edge = mesh.edges[index]
             vertex_a, vertex_b = edge.vertices
             point_a = mesh.vertices[vertex_a].co
@@ -515,9 +773,19 @@ class Part(Object):
                 normal = (
                     mesh.vertices[vertex_a].normal + mesh.vertices[vertex_b].normal
                 )
-            add_label("EDGE", index, tags, center, normal, point_b - point_a)
+            add_label("EDGE", index, tags, center, normal)
 
-        for index, tags in records["POINT"]:
+        for index, tags, group_indices in grouped_records["POINT"]:
+            group_center = sum(
+                (mesh.vertices[vertex_index].co for vertex_index in group_indices),
+                Vector((0.0, 0.0, 0.0)),
+            ) / len(group_indices)
+            index = min(
+                group_indices,
+                key=lambda vertex_index: (
+                    mesh.vertices[vertex_index].co - group_center
+                ).length_squared,
+            )
             vertex = mesh.vertices[index]
             add_label(
                 "POINT",
@@ -525,8 +793,65 @@ class Part(Object):
                 tags,
                 vertex.co,
                 vertex.normal,
-                vertex_tangents[index],
             )
+
+        callout_offset = max(model_size * 0.14, font_size * 3.0, 0.25)
+        label_gap = max(model_size * 0.02, font_size * 0.75, 0.12)
+        side_loads = {-1.0: 0.0, 1.0: 0.0}
+        for item in sorted(
+            pending_plates,
+            key=lambda value: (value["domain"], value["index"]),
+        ):
+            anchor = item["anchor_position"]
+            distance_to_negative = anchor.y - (bbox_min.y - callout_offset)
+            distance_to_positive = bbox_max.y + callout_offset - anchor.y
+            if abs(distance_to_positive - distance_to_negative) <= label_gap:
+                side = min(side_loads, key=side_loads.get)
+            else:
+                side = 1.0 if distance_to_positive < distance_to_negative else -1.0
+            item["side"] = side
+            side_loads[side] += item["plate_height"] + label_gap
+
+        for side in (-1.0, 1.0):
+            side_items = [
+                item for item in pending_plates if item["side"] == side
+            ]
+            side_items.sort(
+                key=lambda item: (
+                    item["anchor_position"].z,
+                    item["anchor_position"].x,
+                    item["domain"],
+                    item["index"],
+                )
+            )
+            total_height = sum(item["plate_height"] for item in side_items)
+            total_height += label_gap * max(len(side_items) - 1, 0)
+            z_cursor = (bbox_min.z + bbox_max.z - total_height) / 2
+            y_boundary = bbox_max.y if side > 0 else bbox_min.y
+            for item in side_items:
+                plate_height = item["plate_height"]
+                position = Vector(
+                    (
+                        item["anchor_position"].x,
+                        y_boundary
+                        + side * (callout_offset + item["plate_width"] / 2),
+                        z_cursor + plate_height / 2,
+                    )
+                )
+                create_plate_object(
+                    item["domain"],
+                    item["index"],
+                    item["lines"],
+                    item["anchor_position"],
+                    position,
+                    side,
+                    item["plate_width"],
+                    plate_height,
+                    item["line_spacing"],
+                    item["plate_depth"],
+                    label_rotation,
+                )
+                z_cursor += plate_height + label_gap
 
         self._hide_tag_label_relationship_lines()
 
