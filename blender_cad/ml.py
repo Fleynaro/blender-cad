@@ -517,6 +517,60 @@ def _curve_to_outer_points(
     return outer_pts, src_w, src_h
 
 
+def _curve_outline_point_tags(curve: "Curve") -> dict[int, tuple[str, ...]]:
+    """Map source curve point tags to matching evaluated outline points."""
+    points_by_island = curve.points
+    if not points_by_island or not points_by_island[0]:
+        return {}
+
+    source_curve = curve.source_curve or curve
+    source_eval_points = [point for island in source_curve.points for point in island]
+    if not source_eval_points:
+        return {}
+
+    control_points = []
+    for spline in source_curve.obj.data.splines:
+        points = spline.bezier_points if spline.type == "BEZIER" else spline.points
+        for point in points:
+            control_points.append(
+                point.co.copy()
+                if spline.type == "BEZIER"
+                else point.co.xyz.copy()
+            )
+    if not control_points:
+        return {}
+
+    size = max((point - control_points[0]).length for point in control_points)
+    tolerance = max(size * 1e-5, 1e-6)
+    source_indices = curve.source_point_indices
+    source_control_index_by_eval_index: dict[int, int] = {}
+    for control_index, control_point in enumerate(control_points):
+        closest_eval_index = min(
+            range(len(source_eval_points)),
+            key=lambda index: (
+                source_eval_points[index] - control_point
+            ).length_squared,
+        )
+        if (
+            source_eval_points[closest_eval_index] - control_point
+        ).length <= tolerance:
+            source_control_index_by_eval_index[closest_eval_index] = control_index
+
+    point_tags: dict[int, tuple[str, ...]] = {}
+    for outline_index, source_eval_index in enumerate(
+        source_indices[: len(points_by_island[0])]
+    ):
+        source_control_index = source_control_index_by_eval_index.get(
+            source_eval_index
+        )
+        if source_control_index is None:
+            continue
+        tags = tuple(source_curve._get_tags("POINT", [source_control_index]))
+        if tags:
+            point_tags[outline_index] = tags
+    return point_tags
+
+
 def _pairwise_closed(
     points: list[tuple[float, float]],
 ) -> Iterator[tuple[tuple[float, float], tuple[float, float]]]:
@@ -3790,10 +3844,22 @@ class ml:
         extrude_prop_edit: Optional[ProportionalEdit] = None,
         bevel: list[tuple[Callable[[bool], ShapeList], float, int]] = [],
         cuts: int = 0,
+        face_tags: Iterable[str] = (),
+        outline_point_tags: Optional[Mapping[int, Iterable[str]]] = None,
     ):
         """Build a 2D face using Polyline only."""
         if len(pts) < 3:
             return None
+        pts = list(pts)
+        tagged_outline_points = {
+            index: (
+                x + pts[index][0],
+                y + pts[index][1],
+                tuple(tags),
+            )
+            for index, tags in (outline_point_tags or {}).items()
+            if 0 <= index < len(pts) and tags
+        }
         pts = [(x + px, y + py, 0) for px, py in pts]
         with BuildCurve() as bc:
             Polyline(*pts, close=close)
@@ -3817,6 +3883,47 @@ class ml:
         if mat is not None:
             part.mat = mat
         part.loc = Pos(Z=-z)
+        mesh = part.obj.data
+        if face_tags and mesh.polygons:
+            part._add_tags("FACE", list(range(len(mesh.polygons))), face_tags)
+        if tagged_outline_points:
+            tolerance = max(
+                max(
+                    (
+                        math.hypot(px, py)
+                        for px, py, _tags in tagged_outline_points.values()
+                    ),
+                    default=0.0,
+                )
+                * 1e-6,
+                1e-6,
+            )
+            tolerance_squared = tolerance * tolerance
+            tagged_mesh_vertices: dict[int, set[str]] = {}
+            for vertex in mesh.vertices:
+                for px, py, tags in tagged_outline_points.values():
+                    if (
+                        (vertex.co.x - px) ** 2 + (vertex.co.y - py) ** 2
+                        <= tolerance_squared
+                    ):
+                        part._add_tags("POINT", [vertex.index], tags)
+                        tagged_mesh_vertices.setdefault(vertex.index, set()).update(
+                            tags
+                        )
+            for edge in mesh.edges:
+                vertex_a, vertex_b = edge.vertices
+                shared_tags = tagged_mesh_vertices.get(
+                    vertex_a, set()
+                ) & tagged_mesh_vertices.get(vertex_b, set())
+                point_a = mesh.vertices[vertex_a].co
+                point_b = mesh.vertices[vertex_b].co
+                if (
+                    shared_tags
+                    and (point_a.x - point_b.x) ** 2
+                    + (point_a.y - point_b.y) ** 2
+                    > tolerance_squared
+                ):
+                    part._add_tags("EDGE", [edge.index], shared_tags)
         add(part, mode=mode)
         return part
 
@@ -4369,7 +4476,11 @@ class ml:
             ]
             return outer_pts, curve
 
-        def build_background(outer_pts: list[tuple[float, float]], bp: BuildPart):
+        def build_background(
+            outer_pts: list[tuple[float, float]],
+            source_curve: Optional[Curve],
+            bp: BuildPart,
+        ):
             if not has_bg:
                 return
             self._emit_polyline_face(
@@ -4387,6 +4498,12 @@ class ml:
                 extrude_delete_source=style.extrude_delete_source_faces,
                 bevel=style.bevel,
                 cuts=style.background_cuts or 0,
+                face_tags=tag_to_list(style.root_tag),
+                outline_point_tags=(
+                    _curve_outline_point_tags(source_curve)
+                    if source_curve is not None
+                    else None
+                ),
             )
             add_tags([Object.TAG_ML_BACKGROUND])
             for cb in style.background_on_build:
@@ -4672,7 +4789,7 @@ class ml:
 
             if not self._is_eval and cached_part is None:
                 outer_pts, source_curve = calculate_outer_pts()
-                build_background(outer_pts, bp)
+                build_background(outer_pts, source_curve, bp)
                 build_other_kinds()
                 add_tags(tag_to_list(style.root_tag))
                 with BuildPart(

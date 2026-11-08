@@ -27,8 +27,43 @@ if TYPE_CHECKING:
     )
 
 
+@dataclass(frozen=True)
+class TagDisplayConfig:
+    """Controls which mesh tag labels ``Part.show`` creates."""
+
+    faces: bool = True
+    edges: bool = True
+    vertices: bool = False
+    system_tags: bool = False
+
+
 class Part(Object):
     """An object representing a part. Manages its own mesh and Blender object."""
+
+    _TAG_LABEL_MARKER = "_blender_cad_tag_label"
+    _TAG_LABEL_MATERIAL = "BlenderCAD_TagLabels"
+    _SYSTEM_TAG_LABEL_MATERIAL = "BlenderCAD_SystemTagLabels"
+    _USER_TAG_LABEL_MATERIAL_PREFIX = "BlenderCAD_UserTag_"
+    _TAG_LABEL_OVERLAY_STATE_PREFIX = "_blender_cad_tag_label_overlay_"
+    _USER_TAG_PALETTE = (
+        (1.0, 0.28, 0.22, 1.0),  # coral
+        (1.0, 0.68, 0.05, 1.0),  # amber
+        (0.70, 1.0, 0.16, 1.0),  # lime
+        (0.05, 0.90, 0.35, 1.0),  # emerald
+        (0.15, 0.72, 1.0, 1.0),  # sky blue
+        (0.68, 0.42, 1.0, 1.0),  # violet
+        (1.0, 0.25, 0.68, 1.0),  # pink
+        (1.0, 0.48, 0.08, 1.0),  # orange
+        (0.40, 1.0, 0.75, 1.0),  # mint
+        (1.0, 0.95, 0.78, 1.0),  # warm white
+    )
+    _SYSTEM_TAGS = frozenset(
+        (
+            Object.TAG_OP_EXTRUDE,
+            Object.TAG_ML_BACKGROUND,
+            Object.TAG_ML_BORDER,
+        )
+    )
 
     def __init__(
         self,
@@ -63,10 +98,443 @@ class Part(Object):
         self._after_copy(part)
         return part
 
+    def show(
+        self,
+        name: str | None = None,
+        hide=False,
+        collection_name: str | None = None,
+        show_tags: bool | TagDisplayConfig = False,
+    ):
+        """Display this part and optionally label its mesh tags.
+
+        ``show_tags=True`` shows user face and edge tags. Pass a
+        ``TagDisplayConfig`` to include vertex or system tags and choose domains.
+        """
+        if isinstance(show_tags, bool):
+            tag_config = TagDisplayConfig() if show_tags else None
+        elif isinstance(show_tags, TagDisplayConfig):
+            tag_config = show_tags
+        else:
+            raise TypeError("show_tags must be a bool or TagDisplayConfig")
+
+        show_name = (
+            None
+            if name is not None
+            and self.is_physically_valid
+            and self.obj.name == name
+            else name
+        )
+        super().show(name=show_name, hide=hide, collection_name=collection_name)
+        self._clear_tag_labels()
+        if tag_config is not None:
+            collection = (
+                bpy.data.collections.get(collection_name)
+                if collection_name is not None
+                else bpy.context.collection
+            )
+            if collection is None:
+                collection = (
+                    self.obj.users_collection[0]
+                    if self.obj.users_collection
+                    else bpy.context.scene.collection
+                )
+            self._show_tag_labels(
+                collection,
+                hide=hide,
+                config=tag_config,
+            )
+
+    def _read_tag_attribute(
+        self,
+        attribute_name: str,
+        domain: str,
+        element_count: int,
+    ) -> list[tuple[int, tuple[str, ...]]]:
+        """Reads the stored tag strings without creating empty attributes."""
+        data = self.obj.data
+        attributes = getattr(data, "attributes", None)
+        attribute = attributes.get(attribute_name) if attributes is not None else None
+
+        if attribute is not None:
+            if attribute.domain != domain or attribute.data_type != "STRING":
+                return []
+            values = attribute.data
+        else:
+            attribute = self._custom_attributes.get(attribute_name)
+            if attribute is None or attribute.domain != domain:
+                return []
+            values = attribute.data
+
+        records = []
+        for index in range(min(element_count, len(values))):
+            raw_value = values[index].value
+            if isinstance(raw_value, bytes):
+                raw_value = raw_value.decode("utf-8")
+            tags = tuple(
+                tag.strip()
+                for tag in str(raw_value or "").split(self.TAG_SEPARATOR)
+                if tag.strip()
+            )
+            if tags:
+                records.append((index, tags))
+        return records
+
+    @staticmethod
+    def _tag_edge_normals(mesh: bpy.types.Mesh) -> list[Vector]:
+        """Builds an averaged adjacent-face normal for each mesh edge."""
+        edge_lookup = {
+            tuple(sorted(edge.vertices)): index for index, edge in enumerate(mesh.edges)
+        }
+        normals = [Vector((0.0, 0.0, 0.0)) for _ in mesh.edges]
+        for polygon in mesh.polygons:
+            vertices = polygon.vertices
+            for index, vertex_a in enumerate(vertices):
+                vertex_b = vertices[(index + 1) % len(vertices)]
+                edge_index = edge_lookup.get(tuple(sorted((vertex_a, vertex_b))))
+                if edge_index is not None:
+                    normals[edge_index] += polygon.normal
+        return normals
+
+    def _clear_tag_labels(self):
+        """Removes text objects created by the mesh-tag visualization."""
+        if not self.is_physically_valid:
+            return
+
+        for child in tuple(self.obj.children):
+            if not child.get(self._TAG_LABEL_MARKER, False):
+                continue
+            text_data = child.data
+            bpy.data.objects.remove(child, do_unlink=True)
+            if isinstance(text_data, bpy.types.Curve) and text_data.users == 0:
+                bpy.data.curves.remove(text_data)
+
+        if not any(obj.get(self._TAG_LABEL_MARKER, False) for obj in bpy.data.objects):
+            self._restore_tag_label_relationship_lines()
+
+        for label_material in tuple(bpy.data.materials):
+            is_tag_material = label_material.name in (
+                self._TAG_LABEL_MATERIAL,
+                self._SYSTEM_TAG_LABEL_MATERIAL,
+            ) or label_material.name.startswith(self._USER_TAG_LABEL_MATERIAL_PREFIX)
+            if is_tag_material and label_material.users == 0:
+                bpy.data.materials.remove(label_material)
+
+    def _hide_tag_label_relationship_lines(self):
+        """Hides Blender's parent rays while tag labels are visible."""
+        scene = bpy.context.scene
+        if scene is None:
+            return
+
+        for screen in bpy.data.screens:
+            view_areas = [area for area in screen.areas if area.type == "VIEW_3D"]
+            if not view_areas:
+                continue
+
+            state_key = f"{self._TAG_LABEL_OVERLAY_STATE_PREFIX}{screen.name}"
+            if state_key not in scene:
+                scene[state_key] = "".join(
+                    "1" if area.spaces.active.overlay.show_relationship_lines else "0"
+                    for area in view_areas
+                )
+            for area in view_areas:
+                area.spaces.active.overlay.show_relationship_lines = False
+
+    def _restore_tag_label_relationship_lines(self):
+        """Restores relationship-line visibility saved before adding labels."""
+        scene = bpy.context.scene
+        if scene is None:
+            return
+
+        for screen in bpy.data.screens:
+            state_key = f"{self._TAG_LABEL_OVERLAY_STATE_PREFIX}{screen.name}"
+            if state_key not in scene:
+                continue
+
+            states = str(scene[state_key])
+            view_areas = [area for area in screen.areas if area.type == "VIEW_3D"]
+            for area, state in zip(view_areas, states):
+                area.spaces.active.overlay.show_relationship_lines = state == "1"
+            del scene[state_key]
+
+    def _show_tag_labels(
+        self,
+        collection: bpy.types.Collection,
+        hide=False,
+        config: TagDisplayConfig = TagDisplayConfig(),
+    ):
+        """Creates small, surface-aligned text labels for tagged mesh elements."""
+        mesh = self.obj.data
+        if not isinstance(mesh, bpy.types.Mesh):
+            return
+
+        records = {
+            "FACE": self._read_tag_attribute(
+                self.FACE_TAG_ATTR, "FACE", len(mesh.polygons)
+            ),
+            "EDGE": self._read_tag_attribute(
+                self.EDGE_TAG_ATTR, "EDGE", len(mesh.edges)
+            ),
+            "POINT": self._read_tag_attribute(
+                self.VERT_TAG_ATTR, "POINT", len(mesh.vertices)
+            ),
+        }
+        if not config.faces:
+            records["FACE"] = []
+        if not config.edges:
+            records["EDGE"] = []
+        if not config.vertices:
+            records["POINT"] = []
+        if not config.system_tags:
+            records = {
+                domain: [
+                    (index, tuple(tag for tag in tags if tag not in self._SYSTEM_TAGS))
+                    for index, tags in domain_records
+                    if any(tag not in self._SYSTEM_TAGS for tag in tags)
+                ]
+                for domain, domain_records in records.items()
+            }
+        if not any(records.values()):
+            return
+
+        user_tags = sorted(
+            {
+                tag
+                for domain_records in records.values()
+                for _, tags in domain_records
+                for tag in tags
+                if tag not in self._SYSTEM_TAGS
+            }
+        )
+        user_tag_hashes = {
+            tag: hashlib.sha256(tag.encode("utf-8")).digest() for tag in user_tags
+        }
+        user_tag_colors = {
+            tag: self._USER_TAG_PALETTE[
+                int.from_bytes(user_tag_hashes[tag][:4], "big")
+                % len(self._USER_TAG_PALETTE)
+            ]
+            for tag in user_tags
+        }
+
+        edge_normals = self._tag_edge_normals(mesh) if records["EDGE"] else []
+        vertex_tangents: list[Optional[Vector]] = [None] * len(mesh.vertices)
+        vertex_tangent_lengths = [-1.0] * len(mesh.vertices)
+        for edge in mesh.edges:
+            vertex_a, vertex_b = edge.vertices
+            tangent = mesh.vertices[vertex_b].co - mesh.vertices[vertex_a].co
+            length_squared = tangent.length_squared
+            if length_squared > vertex_tangent_lengths[vertex_a]:
+                vertex_tangents[vertex_a] = tangent.copy()
+                vertex_tangent_lengths[vertex_a] = length_squared
+            if length_squared > vertex_tangent_lengths[vertex_b]:
+                vertex_tangents[vertex_b] = -tangent
+                vertex_tangent_lengths[vertex_b] = length_squared
+
+        world_matrix = self.obj.matrix_world.copy()
+        world_axes = world_matrix.to_3x3()
+        normal_matrix = world_matrix.to_3x3().inverted_safe().transposed()
+        model_size = max((float(value) for value in self.obj.dimensions), default=0.0)
+        font_size = max(model_size * 0.012, 0.005)
+        normal_offset = max(font_size * 0.3, model_size * 0.001)
+
+        def get_label_material(name: str, color: tuple[float, float, float, float]):
+            label_material = bpy.data.materials.get(name)
+            if label_material is None:
+                label_material = bpy.data.materials.new(name)
+            label_material.diffuse_color = color
+            if label_material.use_nodes and label_material.node_tree is not None:
+                shader = label_material.node_tree.nodes.get("Principled BSDF")
+                if shader is not None and "Base Color" in shader.inputs:
+                    shader.inputs["Base Color"].default_value = color
+            return label_material
+
+        system_material = get_label_material(
+            self._SYSTEM_TAG_LABEL_MATERIAL,
+            (0.2, 0.95, 1.0, 1.0),
+        )
+        user_materials: dict[str, bpy.types.Material] = {}
+
+        def get_user_tag_material(tag: str) -> bpy.types.Material:
+            material = user_materials.get(tag)
+            if material is None:
+                tag_hash = user_tag_hashes[tag].hex()[:12]
+                material = get_label_material(
+                    f"{self._USER_TAG_LABEL_MATERIAL_PREFIX}{tag_hash}",
+                    user_tag_colors[tag],
+                )
+                user_materials[tag] = material
+            return material
+
+        def label_orientation(normal: Vector, tangent: Optional[Vector]):
+            world_normal = normal_matrix @ normal
+            if world_normal.length_squared <= 1e-12:
+                world_normal = normal_matrix @ Vector((0.0, 0.0, 1.0))
+            if world_normal.length_squared <= 1e-12:
+                world_normal = Vector((0.0, 0.0, 1.0))
+            world_normal.normalize()
+
+            preferred_up = world_axes @ Vector((0.0, 1.0, 0.0))
+            preferred_up -= world_normal * preferred_up.dot(world_normal)
+            if preferred_up.length_squared <= 1e-12:
+                preferred_up = world_axes @ Vector((1.0, 0.0, 0.0))
+                preferred_up -= world_normal * preferred_up.dot(world_normal)
+            if preferred_up.length_squared <= 1e-12:
+                preferred_up = world_normal.orthogonal()
+            preferred_up.normalize()
+
+            world_tangent = (
+                world_axes @ tangent
+                if tangent is not None and tangent.length_squared > 1e-12
+                else preferred_up.cross(world_normal)
+            )
+            world_tangent -= world_normal * world_tangent.dot(world_normal)
+            if world_tangent.length_squared <= 1e-12:
+                world_tangent = preferred_up.cross(world_normal)
+            world_tangent.normalize()
+
+            world_up = world_normal.cross(world_tangent)
+            world_up.normalize()
+            if world_up.dot(preferred_up) < 0:
+                world_tangent.negate()
+                world_up.negate()
+
+            rotation = Matrix(
+                (world_tangent, world_up, world_normal)
+            ).transposed().to_quaternion()
+            return world_normal, world_up, rotation
+
+        def create_label_object(
+            domain: str,
+            index: int,
+            label_group: str,
+            text: str,
+            center: Vector,
+            world_normal: Vector,
+            world_up: Vector,
+            rotation,
+            size: float,
+            material: bpy.types.Material,
+            line_offset: float,
+        ):
+            position = world_matrix @ center
+            position += world_normal * normal_offset
+            position += world_up * line_offset
+
+            label_data = bpy.data.curves.new(
+                name=f"{self.obj.name}_Tag_{domain}_{index}_{label_group}_Text",
+                type="FONT",
+            )
+            label_data.body = text
+            label_data.size = size
+            label_data.align_x = "CENTER"
+            label_data.align_y = "CENTER"
+            label_data.materials.append(material)
+
+            label_obj = bpy.data.objects.new(
+                f"{self.obj.name}_Tag_{domain}_{index}_{label_group}", label_data
+            )
+            collection.objects.link(label_obj)
+            label_obj.parent = self.obj
+            label_obj.matrix_parent_inverse = world_matrix.inverted_safe()
+            label_obj.matrix_world = Matrix.LocRotScale(
+                position,
+                rotation,
+                Vector((1.0, 1.0, 1.0)),
+            )
+            label_obj.hide_set(hide)
+            label_obj[self._TAG_LABEL_MARKER] = True
+
+        def add_label(
+            domain: str,
+            index: int,
+            tags: tuple[str, ...],
+            center: Vector,
+            normal: Vector,
+            tangent: Optional[Vector],
+        ):
+            world_normal, world_up, rotation = label_orientation(normal, tangent)
+            system_tags = tuple(tag for tag in tags if tag in self._SYSTEM_TAGS)
+            custom_tags = tuple(tag for tag in tags if tag not in self._SYSTEM_TAGS)
+            line_spacing = font_size * 0.82
+            line_count = len(custom_tags) + bool(system_tags)
+            first_line_offset = max(line_count - 1, 0) * line_spacing * 0.5
+            for custom_index, tag in enumerate(custom_tags):
+                create_label_object(
+                    domain,
+                    index,
+                    f"User_{custom_index}",
+                    tag,
+                    center,
+                    world_normal,
+                    world_up,
+                    rotation,
+                    font_size,
+                    get_user_tag_material(tag),
+                    first_line_offset - custom_index * line_spacing,
+                )
+            if system_tags:
+                system_font_size = font_size * 0.82
+                create_label_object(
+                    domain,
+                    index,
+                    "System",
+                    ", ".join(system_tags),
+                    center,
+                    world_normal,
+                    world_up,
+                    rotation,
+                    system_font_size,
+                    system_material,
+                    first_line_offset - len(custom_tags) * line_spacing,
+                )
+
+        for index, tags in records["FACE"]:
+            polygon = mesh.polygons[index]
+            vertices = polygon.vertices
+            face_tangent = max(
+                (
+                    mesh.vertices[vertices[(i + 1) % len(vertices)]].co
+                    - mesh.vertices[vertex_index].co
+                    for i, vertex_index in enumerate(vertices)
+                ),
+                key=lambda vector: vector.length_squared,
+                default=Vector((1.0, 0.0, 0.0)),
+            )
+            add_label(
+                "FACE", index, tags, polygon.center, polygon.normal, face_tangent
+            )
+
+        for index, tags in records["EDGE"]:
+            edge = mesh.edges[index]
+            vertex_a, vertex_b = edge.vertices
+            point_a = mesh.vertices[vertex_a].co
+            point_b = mesh.vertices[vertex_b].co
+            center = (point_a + point_b) * 0.5
+            normal = edge_normals[index]
+            if normal.length_squared <= 1e-12:
+                normal = (
+                    mesh.vertices[vertex_a].normal + mesh.vertices[vertex_b].normal
+                )
+            add_label("EDGE", index, tags, center, normal, point_b - point_a)
+
+        for index, tags in records["POINT"]:
+            vertex = mesh.vertices[index]
+            add_label(
+                "POINT",
+                index,
+                tags,
+                vertex.co,
+                vertex.normal,
+                vertex_tangents[index],
+            )
+
+        self._hide_tag_label_relationship_lines()
+
     @override
     def remove(self, physical=True):
         """Safely removes the object and its data from the Blender scene."""
         if physical and self.is_physically_valid:
+            self._clear_tag_labels()
             mesh_data = self.obj.data
             if mesh_data and mesh_data.users == 0:
                 bpy.data.meshes.remove(mesh_data)

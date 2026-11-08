@@ -72,6 +72,24 @@ This storage model also makes tags suitable for multi-step modeling. The mesh at
 
 The library uses this mechanism during its own operations. `tests/test_selectors.py` covers tag propagation through nested building and transforms, then uses tagged face selections to assign different materials.
 
+### Visualizing Mesh Tags
+
+Use `Part.show(..., show_tags=True)` to display user tags stored in the mesh's `FACE` and `EDGE` attributes. Vertex tags and system tags are off by default. Use `TagDisplayConfig` to enable them:
+
+```python
+with BuildPart() as result:
+    Box(4, 4, 1)
+    faces().top().add_tags("panel:top")
+
+result.part.show(name="tagged_box", show_tags=True)
+result.part.show(
+    name="tagged_box_with_vertices",
+    show_tags=TagDisplayConfig(vertices=True),
+)
+```
+
+`TagDisplayConfig` has `faces`, `edges`, `vertices`, and `system_tags` switches. Each tagged mesh element gets a small text label at its center or vertex, offset slightly along its normal. Face labels follow the face's longest edge, edge labels follow the edge, and vertex labels follow an incident edge, so the text inherits the geometry's tilt. Edge labels use the average normal of adjacent faces. Each user tag gets a readable color from a deterministic palette; separate tags on the same element receive separate lines. System tags such as `op:extrude`, `ml:background`, and `ml:border` use a contrasting color and slightly smaller text; enable them with `TagDisplayConfig(system_tags=True)`. The labels are separate text objects parented to the part; they follow its transform without changing its mesh attributes. Calling `show()` without `show_tags=True` removes the labels created by the previous call. Curve point tags are copied to corresponding vertices and to edges whose endpoints both carry the tag when a tagged curve is used as an `MLStyle.background_from_curve` outline. Other curve and RBL node tags are not displayed directly.
+
 ## Curves
 
 Curves use the same public concepts but have different storage constraints. Curve tags may belong to a spline (`CURVE` domain) or to a control point (`POINT` domain):

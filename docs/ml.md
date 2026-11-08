@@ -105,6 +105,8 @@ Rounded corners support `border_radius`, side-specific radii, and corner-specifi
 
 `background_from_curve` uses a closed curve as the background outline and derives unspecified width and height from it. This permits non-rectangular panels while retaining the same child layout model.
 
+Point tags on the source curve are copied to matching vertices and to generated edges whose endpoints both carry the tag. Display them with `part.show(show_tags=TagDisplayConfig(vertices=True))`.
+
 ```python
 with BuildCurve() as boundary:
     Spline((0, 0, 0), (6, 0, 0), (6, 4, 0), (0, 4, 0), close=True)

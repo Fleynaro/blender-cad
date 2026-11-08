@@ -34,6 +34,8 @@ result.part.show(name="gift_box")
 
 Run it to add a blue box with a gold top to the current Blender scene. Dimensions are Blender units; use one consistent unit convention for a project.
 
+To inspect user geometry tags in the viewport, call `result.part.show(name="gift_box", show_tags=True)`. This displays user face and edge tags; vertex and system tags are off by default. Pass `show_tags=TagDisplayConfig(vertices=True, system_tags=True)` to include them. User tags use a readable, consistent color palette.
+
 ## Build With Code
 
 Model geometry in a `BuildPart` context, then show the resulting `Part` in Blender:

@@ -92,6 +92,18 @@ Use `BoxSetPart` to quickly sketch an approximate scene before drawing the actua
 
 `Part` starts unlinked to the scene. Call `part.show(name="...")` to link it to the current collection and retain it in the scene. Temporary wrappers clean up their Blender data when removed or collected. Use `copy()` for an independent Blender object and mesh copy, and `remove()` when the object is no longer needed.
 
+Pass `show_tags=True` to display user tags on faces and edges. Vertex and system tag labels are off by default. Pass a `TagDisplayConfig` to choose domains and include system tags:
+
+```python
+result.part.show(name="tagged_part", show_tags=True)
+result.part.show(
+    name="tagged_part_all_domains",
+    show_tags=TagDisplayConfig(vertices=True, system_tags=True),
+)
+```
+
+`TagDisplayConfig` has `faces`, `edges`, `vertices`, and `system_tags` switches. Its defaults show user face and edge tags while hiding vertex and system tags. The labels sit at the center of each tagged face or edge, or at each tagged vertex, and face outward from the surface. Their baseline follows the element geometry and the part's orientation. Each user tag gets a readable color from a deterministic palette, and labels for multiple tags on one element are placed on separate lines. System tags use a contrasting color and slightly smaller text. Labels are separate child text objects, so they do not change the part mesh or its hash. Calling `show()` again with the default `show_tags=False`, or physically removing the part, clears these labels.
+
 For common shared object behavior, see [`blender_cad/object.py`](../blender_cad/object.py). For primitive constructors, see [`blender_cad/primitives.py`](../blender_cad/primitives.py).
 
 ## Tested References

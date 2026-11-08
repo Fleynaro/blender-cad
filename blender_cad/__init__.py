@@ -130,7 +130,7 @@ from .modifiers import (
 )
 
 # The main Part class representing a geometric object in the scene
-from .part import BoxSetPart, Part
+from .part import BoxSetPart, Part, TagDisplayConfig
 
 # Procedural primitive generators
 from .primitives import (
@@ -249,6 +249,7 @@ __all__ = [  # noqa: RUF022
     # part
     "Part",
     "BoxSetPart",
+    "TagDisplayConfig",
     # curve
     "FillMode",
     "Curve",
